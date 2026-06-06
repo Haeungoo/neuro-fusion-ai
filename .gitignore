@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+.venv/
+venv/
+
+# macOS
+.DS_Store
+
+# Large datasets
+data/
+*.edf
+*.edf.seizures
+*.nii
+*.nii.gz
+*.zip
+
+# Model weights
+models/
+*.pt
+*.pkl
+
+# Cache
+.mne/
+.cache/
+.ipynb_checkpoints/
+
+# Logs
+*.log
