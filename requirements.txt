@@ -9,3 +9,5 @@ mne
 nibabel
 joblib
 tqdm
+fastapi
+uvicorn
