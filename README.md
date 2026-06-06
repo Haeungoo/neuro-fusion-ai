@@ -535,9 +535,30 @@ Example README links:
 
 ---
 
-## Important Disclaimer
+## Roadmap
 
-This project is for educational and portfolio purposes only.
+### v0.1 Streamlit Prototype
+- Streamlit dashboard
+- MRI, seizure, and motor imagery pages
+- Basic visualization and metrics
 
-It is not a medical device, clinical decision support system, or diagnostic tool.  
-The results should not be used for patient care or clinical decision-making.
+### v0.2 FastAPI Backend
+- REST API endpoints for each module
+- Model status endpoints
+- Result metadata endpoints
+
+### v0.3 Next.js Frontend
+- Production-style frontend
+- API-based dashboard
+- Improved UI components
+
+### v0.4 Model Improvements
+- MRI IoU/Dice validation
+- CHB-MIT patient-independent seizure validation
+- Motor imagery subject-level benchmarking
+
+### v1.0 Portfolio Release
+- Clean documentation
+- Screenshots
+- Reproducible setup
+- Stable demo workflow
