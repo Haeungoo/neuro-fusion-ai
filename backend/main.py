@@ -2,22 +2,30 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
-from backend.routers import mri, seizure, motor, files
+from backend.routers import files, motor, mri, seizure
+from src.common.paths import PROJECT_ROOT
 
 
 app = FastAPI(
     title="NeuroFusion-AI API",
-    description="FastAPI backend for NeuroFusion-AI neuroscience modules.",
-    version="0.2.0",
+    description="FastAPI backend for NeuroFusion-AI.",
+    version="0.3.0",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+app.mount(
+    "/media/results",
+    StaticFiles(directory=PROJECT_ROOT / "results"),
+    name="results",
 )
 
 
@@ -25,13 +33,8 @@ app.add_middleware(
 def root() -> dict:
     return {
         "project": "NeuroFusion-AI",
-        "version": "0.2.0",
-        "message": "NeuroFusion-AI FastAPI backend is running.",
-        "modules": [
-            "MRI Tumor Segmentation",
-            "EEG Seizure Detection",
-            "EEG Motor Imagery BCI",
-        ],
+        "version": "0.3.0",
+        "message": "NeuroFusion-AI backend is running.",
     }
 
 
@@ -40,13 +43,12 @@ def overview() -> dict:
     return {
         "project": "NeuroFusion-AI",
         "description": (
-            "Multimodal neuroscience AI system integrating MRI tumor segmentation, "
-            "EEG seizure detection, and EEG motor imagery BCI."
+            "Multimodal neuroscience AI platform integrating MRI tumor "
+            "segmentation, EEG seizure detection, and motor imagery BCI."
         ),
-        "version": "0.2.0",
+        "version": "0.3.0",
         "backend": "FastAPI",
-        "current_frontend": "Streamlit",
-        "planned_frontend": "Next.js",
+        "current_frontend": "Next.js",
         "modules": {
             "mri": {
                 "task": "Brain tumor segmentation",
@@ -56,7 +58,7 @@ def overview() -> dict:
             "seizure": {
                 "task": "EEG seizure detection",
                 "model": "Random Forest",
-                "dataset": "Synthetic EEG + CHB-MIT",
+                "dataset": "CHB-MIT",
             },
             "motor": {
                 "task": "Motor imagery BCI classification",
@@ -69,5 +71,5 @@ def overview() -> dict:
 
 app.include_router(mri.router, prefix="/api/mri", tags=["MRI"])
 app.include_router(seizure.router, prefix="/api/seizure", tags=["Seizure"])
-app.include_router(motor.router, prefix="/api/motor", tags=["Motor Imagery"])
+app.include_router(motor.router, prefix="/api/motor", tags=["Motor"])
 app.include_router(files.router, prefix="/api/files", tags=["Files"])
