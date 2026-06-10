@@ -9,16 +9,10 @@ from torch.utils.data import Dataset
 
 def normalize_mri_slice(image: np.ndarray) -> np.ndarray:
     """
-    Normalize one MRI slice using nonzero pixels.
-
-    Input:
-        image: 2D MRI slice
-
-    Output:
-        normalized 2D MRI slice
+    Normalize one MRI slice using nonzero brain pixels.
     """
-    image = np.asarray(image, dtype=np.float32)
 
+    image = np.asarray(image, dtype=np.float32)
     nonzero = image != 0
 
     if np.any(nonzero):
@@ -26,46 +20,49 @@ def normalize_mri_slice(image: np.ndarray) -> np.ndarray:
         std = float(image[nonzero].std()) + 1e-8
         image = (image - mean) / std
     else:
-        image = (image - image.mean()) / (image.std() + 1e-8)
+        image = (image - image.mean()) / (
+            image.std() + 1e-8
+        )
 
     return image.astype(np.float32)
 
 
 class MRISliceDataset(Dataset):
     """
-    Dataset for paired MRI slice and tumor mask .npy files.
+    Dataset for paired MRI image and tumor mask .npy files.
 
-    Expected structure:
+    Expected folders:
 
         data/mri/processed/images/*.npy
         data/mri/processed/masks/*.npy
-
-    The image and mask file names must match.
-
-    Example:
-
-        images/BraTS20_Training_001_slice_080.npy
-        masks/BraTS20_Training_001_slice_080.npy
     """
 
     def __init__(
         self,
         image_dir: str | Path,
         mask_dir: str | Path,
+        return_metadata: bool = False,
     ) -> None:
         self.image_dir = Path(image_dir)
         self.mask_dir = Path(mask_dir)
+        self.return_metadata = return_metadata
 
         if not self.image_dir.exists():
-            raise FileNotFoundError(f"Image directory not found: {self.image_dir}")
+            raise FileNotFoundError(
+                f"Image directory not found: {self.image_dir}"
+            )
 
         if not self.mask_dir.exists():
-            raise FileNotFoundError(f"Mask directory not found: {self.mask_dir}")
+            raise FileNotFoundError(
+                f"Mask directory not found: {self.mask_dir}"
+            )
 
         image_paths = sorted(self.image_dir.glob("*.npy"))
 
         if not image_paths:
-            raise FileNotFoundError(f"No .npy image files found in {self.image_dir}")
+            raise FileNotFoundError(
+                f"No .npy image files found in {self.image_dir}"
+            )
 
         self.pairs: list[tuple[Path, Path]] = []
 
@@ -75,13 +72,21 @@ class MRISliceDataset(Dataset):
             if mask_path.exists():
                 self.pairs.append((image_path, mask_path))
             else:
-                print(f"Warning: missing mask for {image_path.name}")
+                print(
+                    f"Warning: missing mask for {image_path.name}"
+                )
 
         if not self.pairs:
             raise FileNotFoundError(
-                "No matching image/mask pairs found. "
-                f"Image dir={self.image_dir}, mask dir={self.mask_dir}"
+                "No matching MRI image/mask pairs were found."
             )
+
+        self.image_paths = [
+            image_path for image_path, _ in self.pairs
+        ]
+        self.mask_paths = [
+            mask_path for _, mask_path in self.pairs
+        ]
 
     def __len__(self) -> int:
         return len(self.pairs)
@@ -94,19 +99,31 @@ class MRISliceDataset(Dataset):
 
         if image.ndim != 2:
             raise ValueError(
-                f"Expected image shape (H, W). Got {image.shape} from {image_path}"
+                f"Expected 2D MRI slice. Got {image.shape} "
+                f"from {image_path}"
             )
 
         if mask.ndim != 2:
             raise ValueError(
-                f"Expected mask shape (H, W). Got {mask.shape} from {mask_path}"
+                f"Expected 2D mask. Got {mask.shape} "
+                f"from {mask_path}"
             )
 
         image = normalize_mri_slice(image)
-        mask = (mask > 0).astype(np.float32)
 
-        # PyTorch expects channel-first format: (C, H, W)
-        image = image[None, :, :]
-        mask = mask[None, :, :]
+        image_tensor = torch.from_numpy(
+            image[None, :, :]
+        ).float()
 
-        return torch.from_numpy(image), torch.from_numpy(mask)
+        mask_tensor = torch.from_numpy(
+            mask[None, :, :]
+        ).float()
+
+        if self.return_metadata:
+            return {
+                "image": image_tensor,
+                "mask": mask_tensor,
+                "filename": image_path.name,
+            }
+
+        return image_tensor, mask_tensor
