@@ -15,12 +15,14 @@ type MriStatus = {
   dataset: string;
   model: string;
   model_file: FileInfo;
+
   outputs: {
     input_slice: FileInfo;
     ground_truth_mask: FileInfo;
     predicted_mask: FileInfo;
     overlay: FileInfo;
   };
+
   training_metrics: {
     best_val_loss?: number;
     epochs?: number;
@@ -28,6 +30,7 @@ type MriStatus = {
     train_samples?: number;
     val_samples?: number;
   };
+
   inference_metrics: {
     sample_name?: string;
     dice_score?: number;
@@ -35,14 +38,56 @@ type MriStatus = {
     prediction_pixels?: number;
     ground_truth_pixels?: number;
   };
+
+  validation_metrics: {
+    evaluation_type?: string;
+    threshold?: number;
+    num_validation_cases?: number;
+    num_validation_slices?: number;
+    validation_cases?: string[];
+
+    slice_level?: {
+      mean_dice?: number;
+      mean_iou?: number;
+      mean_precision?: number;
+      mean_recall?: number;
+      mean_specificity?: number;
+      mean_accuracy?: number;
+    };
+
+    case_level?: {
+      mean_dice?: number;
+      mean_iou?: number;
+      mean_precision?: number;
+      mean_recall?: number;
+      mean_specificity?: number;
+      mean_accuracy?: number;
+    };
+  };
+
   disclaimer: string;
 };
 
 export default async function MriPage() {
   const status = await apiFetch<MriStatus>("/api/mri/status");
 
-  const dice = status?.inference_metrics?.dice_score;
-  const bestValLoss = status?.training_metrics?.best_val_loss;
+  const caseMeanDice =
+    status?.validation_metrics?.case_level?.mean_dice;
+
+  const caseMeanIoU =
+    status?.validation_metrics?.case_level?.mean_iou;
+
+  const sliceMeanDice =
+    status?.validation_metrics?.slice_level?.mean_dice;
+
+  const sliceMeanIoU =
+    status?.validation_metrics?.slice_level?.mean_iou;
+
+  const validationCases =
+    status?.validation_metrics?.num_validation_cases;
+
+  const validationSlices =
+    status?.validation_metrics?.num_validation_slices;
 
   return (
     <AppShell
@@ -50,33 +95,48 @@ export default async function MriPage() {
       title="MRI Tumor Segmentation"
       subtitle="BraTS MRI analysis using a 2D U-Net"
     >
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          icon={BrainCircuit}
-          label="Model"
-          value={status?.model ?? "2D U-Net"}
-          description={status?.model_file.exists ? "Available" : "Missing"}
-        />
-        <StatCard
-          icon={Database}
-          label="Dataset"
-          value={status?.dataset ?? "BraTS 2020"}
-          description="FLAIR MRI"
-          iconClassName="bg-blue-50 text-blue-600"
-        />
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <StatCard
           icon={Gauge}
-          label="Dice score"
-          value={dice == null ? "N/A" : dice.toFixed(4)}
-          description="Prediction overlap"
+          label="Case mean Dice"
+          value={formatMetric(caseMeanDice)}
+          description="Patient-level validation"
           iconClassName="bg-violet-50 text-violet-600"
         />
         <StatCard
           icon={ScanLine}
-          label="Best val loss"
-          value={bestValLoss == null ? "N/A" : bestValLoss.toFixed(4)}
-          description="Training result"
+          label="Case mean IoU"
+          value={formatMetric(caseMeanIoU)}
+          description="Patient-level validation"
+          iconClassName="bg-blue-50 text-blue-600"
+        />
+        <StatCard
+          icon={Gauge}
+          label="Slice mean Dice"
+          value={formatMetric(sliceMeanDice)}
+          description="All validation slices"
+          iconClassName="bg-teal-50 text-teal-600"
+        />
+        <StatCard
+          icon={ScanLine}
+          label="Slice mean IoU"
+          value={formatMetric(sliceMeanIoU)}
+          description="All validation slices"
+          iconClassName="bg-cyan-50 text-cyan-600"
+        />
+        <StatCard
+          icon={Database}
+          label="Validation cases"
+          value={formatCount(validationCases)}
+          description="Unseen BraTS cases"
           iconClassName="bg-emerald-50 text-emerald-600"
+        />
+        <StatCard
+          icon={BrainCircuit}
+          label="Validation slices"
+          value={formatCount(validationSlices)}
+          description="Evaluated MRI slices"
+          iconClassName="bg-amber-50 text-amber-600"
         />
       </section>
 
@@ -124,14 +184,90 @@ export default async function MriPage() {
             ],
             [
               "Predicted pixels",
-              formatNumber(status?.inference_metrics?.prediction_pixels),
+              formatMetric(status?.inference_metrics?.prediction_pixels),
             ],
             [
               "Ground-truth pixels",
-              formatNumber(status?.inference_metrics?.ground_truth_pixels),
+              formatMetric(status?.inference_metrics?.ground_truth_pixels),
             ],
           ]}
         />
+
+        <section className="mt-5 grid gap-5 lg:grid-cols-2">
+            <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h2 className="text-lg font-semibold text-slate-900">
+                Patient-level validation
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                Metrics averaged across unseen BraTS cases.
+                </p>
+
+                <dl className="mt-4 divide-y divide-slate-100">
+                <MetricRow
+                    label="Mean Dice"
+                    value={formatMetric(caseMeanDice)}
+                />
+                <MetricRow
+                    label="Mean IoU"
+                    value={formatMetric(caseMeanIoU)}
+                />
+                <MetricRow
+                    label="Mean precision"
+                    value={formatMetric(
+                    status?.validation_metrics?.case_level?.mean_precision,
+                    )}
+                />
+                <MetricRow
+                    label="Mean recall"
+                    value={formatMetric(
+                    status?.validation_metrics?.case_level?.mean_recall,
+                    )}
+                />
+                <MetricRow
+                    label="Validation cases"
+                    value={formatCount(validationCases)}
+                />
+                </dl>
+            </article>
+
+            <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h2 className="text-lg font-semibold text-slate-900">
+                Slice-level validation
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                Metrics averaged over every validation MRI slice.
+                </p>
+
+                <dl className="mt-4 divide-y divide-slate-100">
+                <MetricRow
+                    label="Mean Dice"
+                    value={formatMetric(sliceMeanDice)}
+                />
+                <MetricRow
+                    label="Mean IoU"
+                    value={formatMetric(sliceMeanIoU)}
+                />
+                <MetricRow
+                    label="Mean precision"
+                    value={formatMetric(
+                    status?.validation_metrics?.slice_level?.mean_precision,
+                    )}
+                />
+                <MetricRow
+                    label="Mean recall"
+                    value={formatMetric(
+                    status?.validation_metrics?.slice_level?.mean_recall,
+                    )}
+                />
+                <MetricRow
+                    label="Validation slices"
+                    value={formatCount(validationSlices)}
+                />
+                </dl>
+            </article>
+        </section>
 
         <InfoPanel
           title="Training details"
@@ -142,15 +278,15 @@ export default async function MriPage() {
             ],
             [
               "Total slices",
-              formatNumber(status?.training_metrics?.num_samples),
+              formatMetric(status?.training_metrics?.num_samples),
             ],
             [
               "Training slices",
-              formatNumber(status?.training_metrics?.train_samples),
+              formatMetric(status?.training_metrics?.train_samples),
             ],
             [
               "Validation slices",
-              formatNumber(status?.training_metrics?.val_samples),
+              formatMetric(status?.training_metrics?.val_samples),
             ],
           ]}
         />
@@ -205,6 +341,27 @@ function InfoPanel({
   );
 }
 
-function formatNumber(value?: number): string {
+function formatMetric(value?: number): string {
+  return value == null ? "N/A" : value.toFixed(4);
+}
+
+function formatCount(value?: number): string {
   return value == null ? "N/A" : value.toLocaleString();
+}
+
+function MetricRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-3">
+      <dt className="text-sm text-slate-500">{label}</dt>
+      <dd className="text-sm font-semibold text-slate-800">
+        {value}
+      </dd>
+    </div>
+  );
 }
