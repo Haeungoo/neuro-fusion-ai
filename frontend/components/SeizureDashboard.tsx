@@ -1,84 +1,101 @@
 "use client";
 
-import {
-  Activity,
-  BrainCircuit,
-  Database,
-  FileHeart,
-  Waves,
-} from "lucide-react";
-import { useMemo, useState } from "react";
-
-import StatCard from "@/components/StatCard";
-import StatusBadge from "@/components/StatusBadge";
-import { mediaUrl } from "@/lib/api";
-
-type FileInfo = {
-  path: string;
-  exists: boolean;
-};
-
-type SeizureMode = {
-  model_file: FileInfo;
-  waveform: FileInfo;
-  timeline: FileInfo;
-  confusion_matrix: FileInfo;
-
-  dataset?: string;
-  file?: string;
-  subject?: string;
-  known_seizure_interval_sec?: number[];
-};
-
-export type SeizureStatus = {
-  module: string;
-  model: string;
-  features: string[];
-
-  modes: {
-    synthetic: SeizureMode;
-    chbmit_one_file: SeizureMode;
-    chbmit_multi_file: SeizureMode;
-  };
-
-  disclaimer: string;
-};
+import { useEffect, useMemo, useState } from "react";
+import { API_BASE_URL, apiFetch, mediaUrl } from "@/lib/api";
 
 type ModeKey =
   | "synthetic"
   | "chbmit_one_file"
   | "chbmit_multi_file";
 
-type ModeDefinition = {
-  key: ModeKey;
-  title: string;
-  shortTitle: string;
-  description: string;
+type FileInfo = {
+  exists: boolean;
+  path?: string;
+  url: string | null;
 };
 
-const MODE_DEFINITIONS: ModeDefinition[] = [
-  {
-    key: "synthetic",
-    title: "Synthetic Demo EEG",
-    shortTitle: "Synthetic",
-    description:
-      "Synthetic EEG-like signals used to verify the feature extraction and classification pipeline.",
-  },
-  {
-    key: "chbmit_one_file",
-    title: "CHB-MIT One-File EEG",
-    shortTitle: "One file",
-    description:
-      "A real EEG prototype based on one seizure-containing CHB-MIT recording.",
-  },
-  {
-    key: "chbmit_multi_file",
-    title: "CHB-MIT Multi-File EEG",
-    shortTitle: "Multi-file",
-    description:
-      "A subject-level prototype trained and evaluated using multiple CHB-MIT EEG recordings.",
-  },
-];
+type SeizureEvaluationMetrics = {
+  classification?: {
+    true_positive?: number;
+    true_negative?: number;
+    false_positive?: number;
+    false_negative?: number;
+    sensitivity?: number;
+    recall?: number;
+    specificity?: number;
+    precision?: number;
+    negative_predictive_value?: number;
+    f1_score?: number;
+    accuracy?: number;
+    balanced_accuracy?: number;
+    prevalence?: number;
+    false_positive_rate?: number;
+    false_negative_rate?: number;
+    num_samples?: number;
+    num_positive_samples?: number;
+    num_negative_samples?: number;
+  };
+  false_alarm_analysis?: {
+    false_positive_windows?: number;
+    false_alarm_events?: number;
+    non_seizure_windows?: number;
+    non_seizure_duration_seconds?: number;
+    non_seizure_duration_hours?: number;
+    false_alarms_per_hour?: number;
+    merge_consecutive_windows?: boolean;
+    step_seconds?: number;
+  };
+};
+
+type SeizureStatusResponse = {
+  module?: string;
+  status?: string;
+  description?: string;
+  available_modes?: string[];
+  results?: {
+    synthetic?: {
+      waveform?: FileInfo;
+      probability_timeline?: FileInfo;
+      confusion_matrix?: FileInfo;
+    };
+    chbmit_one_file?: {
+      waveform?: FileInfo;
+      probability_timeline?: FileInfo;
+      confusion_matrix?: FileInfo;
+    };
+    chbmit_multi_file?: {
+      waveform?: FileInfo;
+      probability_timeline?: FileInfo;
+      confusion_matrix?: FileInfo;
+    };
+  };
+  training_outputs?: {
+    feature_dataset?: FileInfo;
+    prediction_csv?: FileInfo;
+    random_forest_metrics?: Record<string, unknown> | null;
+    random_forest_confusion_matrix?: FileInfo;
+  };
+  evaluation_metrics?: SeizureEvaluationMetrics | null;
+  evaluation_outputs?: {
+    per_file_metrics_csv?: FileInfo;
+    confusion_matrix?: FileInfo;
+  };
+};
+
+const MODE_LABELS: Record<ModeKey, string> = {
+  synthetic: "Synthetic demo",
+  chbmit_one_file: "CHB-MIT one file",
+  chbmit_multi_file: "CHB-MIT multi-file",
+};
+
+const MODE_DESCRIPTIONS: Record<ModeKey, string> = {
+  synthetic:
+    "A simple artificial EEG example used only for visual demonstration.",
+  chbmit_one_file:
+    "A single CHB-MIT EEG file result. Useful for understanding one recording.",
+  chbmit_multi_file:
+    "A multi-file CHB-MIT result. Useful for a broader demo visualization.",
+};
 
 const RESULT_FILENAMES: Record<
   ModeKey,
@@ -93,496 +110,437 @@ const RESULT_FILENAMES: Record<
     timeline: "seizure/synthetic_probability_timeline.png",
     confusionMatrix: "seizure/synthetic_confusion_matrix.png",
   },
-
   chbmit_one_file: {
     waveform: "seizure/chbmit_chb01_03_waveform.png",
     timeline: "seizure/chbmit_chb01_03_probability_timeline.png",
-    confusionMatrix:
-      "seizure/chbmit_chb01_03_confusion_matrix.png",
+    confusionMatrix: "seizure/chbmit_chb01_03_confusion_matrix.png",
   },
-
   chbmit_multi_file: {
     waveform: "seizure/chbmit_multi_file_waveform.png",
-    timeline:
-      "seizure/chbmit_multi_file_probability_timeline.png",
-    confusionMatrix:
-      "seizure/chbmit_multi_file_confusion_matrix.png",
+    timeline: "seizure/chbmit_multi_file_probability_timeline.png",
+    confusionMatrix: "seizure/chbmit_multi_file_confusion_matrix.png",
   },
 };
 
-export default function SeizureDashboard({
-  status,
-}: {
-  status: SeizureStatus;
-}) {
-  const [selectedMode, setSelectedMode] =
-    useState<ModeKey>("chbmit_multi_file");
+function formatPercent(value?: number): string {
+  if (value === undefined || value === null) {
+    return "N/A";
+  }
 
-  const mode = status.modes[selectedMode];
-  const filenames = RESULT_FILENAMES[selectedMode];
-
-  const definition = useMemo(
-    () =>
-      MODE_DEFINITIONS.find(
-        (item) => item.key === selectedMode,
-      ) ?? MODE_DEFINITIONS[2],
-    [selectedMode],
-  );
-
-  const datasetName =
-    mode.dataset ??
-    (selectedMode === "synthetic"
-      ? "Synthetic EEG"
-      : "CHB-MIT");
-
-  const sourceDescription = getSourceDescription(
-    selectedMode,
-    mode,
-  );
-
-  return (
-    <>
-      <ModeSelector
-        selectedMode={selectedMode}
-        onSelect={setSelectedMode}
-      />
-
-      <section className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          icon={BrainCircuit}
-          label="Model"
-          value={status.model}
-          description={
-            mode.model_file.exists
-              ? "Model available"
-              : "Model missing"
-          }
-          iconClassName="bg-blue-50 text-blue-600"
-        />
-
-        <StatCard
-          icon={Database}
-          label="Dataset"
-          value={datasetName}
-          description={definition.shortTitle}
-          iconClassName="bg-emerald-50 text-emerald-600"
-        />
-
-        <StatCard
-          icon={Activity}
-          label="Analysis mode"
-          value={definition.shortTitle}
-          description="Selected EEG source"
-          iconClassName="bg-violet-50 text-violet-600"
-        />
-
-        <StatCard
-          icon={Waves}
-          label="Features"
-          value={String(status.features.length)}
-          description="EEG feature groups"
-          iconClassName="bg-teal-50 text-teal-600"
-        />
-      </section>
-
-      <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-teal-600">
-              Selected source
-            </p>
-
-            <h2 className="mt-1 text-xl font-semibold text-slate-900">
-              {definition.title}
-            </h2>
-
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-              {definition.description}
-            </p>
-          </div>
-
-          <StatusBadge
-            active={mode.model_file.exists}
-            label={
-              mode.model_file.exists
-                ? "Model available"
-                : "Model missing"
-            }
-          />
-        </div>
-
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <SourceValue
-            label="Dataset"
-            value={datasetName}
-          />
-
-          <SourceValue
-            label="Recording"
-            value={
-              mode.file ??
-              mode.subject ??
-              (selectedMode === "synthetic"
-                ? "Generated signal"
-                : "N/A")
-            }
-          />
-
-          <SourceValue
-            label="Mode"
-            value={definition.shortTitle}
-          />
-
-          <SourceValue
-            label="Known seizure interval"
-            value={
-              mode.known_seizure_interval_sec
-                ? `${mode.known_seizure_interval_sec[0]}–${mode.known_seizure_interval_sec[1]} sec`
-                : "Not fixed"
-            }
-          />
-        </div>
-      </section>
-
-      <section className="mt-5 grid gap-5 xl:grid-cols-[1.35fr_0.65fr]">
-        <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">
-              EEG signal analysis
-            </h2>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Waveform and seizure-probability results for the
-              selected data source.
-            </p>
-          </div>
-
-          <div className="mt-5 space-y-4">
-            <ResultImage
-              title="EEG waveform"
-              description="Input EEG signal used by the selected analysis mode."
-              src={mediaUrl(filenames.waveform)}
-              available={mode.waveform.exists}
-            />
-
-            <ResultImage
-              title="Seizure probability timeline"
-              description="Window-level seizure probability produced by the classifier."
-              src={mediaUrl(filenames.timeline)}
-              available={mode.timeline.exists}
-            />
-          </div>
-        </article>
-
-        <aside className="space-y-5">
-          <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">
-                  Classification result
-                </h2>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  Confusion matrix for the selected model.
-                </p>
-              </div>
-
-              <StatusBadge
-                active={mode.confusion_matrix.exists}
-                label={
-                  mode.confusion_matrix.exists
-                    ? "Available"
-                    : "Missing"
-                }
-              />
-            </div>
-
-            <div className="mt-4">
-              <ResultImage
-                title="Confusion matrix"
-                description="Predicted and true seizure classes."
-                src={mediaUrl(
-                  filenames.confusionMatrix,
-                )}
-                available={
-                  mode.confusion_matrix.exists
-                }
-                compact
-              />
-            </div>
-          </article>
-
-          <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                <FileHeart size={21} />
-              </div>
-
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">
-                  EEG features
-                </h2>
-
-                <p className="text-sm text-slate-500">
-                  Features used by the classifier
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-4 flex flex-wrap gap-2">
-              {status.features.map((feature) => (
-                <span
-                  key={feature}
-                  className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700"
-                >
-                  {feature}
-                </span>
-              ))}
-            </div>
-          </article>
-        </aside>
-      </section>
-
-      <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-900">
-          Analysis pipeline
-        </h2>
-
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <PipelineStep number="1" label="EEG input" />
-          <PipelineStep number="2" label="Sliding windows" />
-          <PipelineStep number="3" label="Feature extraction" />
-          <PipelineStep number="4" label="Random Forest" />
-          <PipelineStep
-            number="5"
-            label="Probability timeline"
-          />
-        </div>
-
-        <p className="mt-5 text-sm leading-6 text-slate-500">
-          {sourceDescription}
-        </p>
-      </section>
-
-      <section className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
-        {status.disclaimer}
-      </section>
-    </>
-  );
+  return `${(value * 100).toFixed(1)}%`;
 }
 
-function ModeSelector({
-  selectedMode,
-  onSelect,
+function formatNumber(
+  value?: number,
+  digits: number = 2,
+): string {
+  if (value === undefined || value === null) {
+    return "N/A";
+  }
+
+  return value.toFixed(digits);
+}
+
+function backendMediaUrl(url?: string | null): string | null {
+  if (!url) {
+    return null;
+  }
+
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    return url;
+  }
+
+  if (url.startsWith("/media/results/")) {
+    return `${API_BASE_URL}${url}`;
+  }
+
+  return mediaUrl(url);
+}
+
+function MetricCard({
+  label,
+  value,
+  description,
+  emphasis = false,
 }: {
-  selectedMode: ModeKey;
-  onSelect: (mode: ModeKey) => void;
+  label: string;
+  value: string;
+  description: string;
+  emphasis?: boolean;
 }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-        <div>
-          <h2 className="text-base font-semibold text-slate-900">
-            Select EEG data source
-          </h2>
+    <div
+      className={[
+        "rounded-2xl border p-4 shadow-sm",
+        emphasis
+          ? "border-blue-200 bg-blue-50"
+          : "border-slate-200 bg-white",
+      ].join(" ")}
+    >
+      <p className="text-sm text-slate-500">{label}</p>
 
-          <p className="mt-1 text-sm text-slate-500">
-            Compare synthetic and real CHB-MIT seizure-analysis
-            modes.
-          </p>
-        </div>
-
-        <span className="text-xs font-medium text-slate-400">
-          3 modes available
-        </span>
-      </div>
-
-      <div
-        className="mt-4 grid gap-2 md:grid-cols-3"
-        role="tablist"
-        aria-label="EEG data source"
+      <p
+        className={[
+          "mt-2 text-2xl font-semibold",
+          emphasis ? "text-blue-700" : "text-slate-900",
+        ].join(" ")}
       >
-        {MODE_DEFINITIONS.map((definition) => {
-          const selected =
-            definition.key === selectedMode;
+        {value}
+      </p>
 
-          return (
-            <button
-              key={definition.key}
-              type="button"
-              role="tab"
-              aria-selected={selected}
-              onClick={() =>
-                onSelect(definition.key)
-              }
-              className={[
-                "rounded-xl border px-4 py-3 text-left transition",
-                "focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2",
-                selected
-                  ? "border-teal-600 bg-teal-600 text-white shadow-sm"
-                  : "border-slate-200 bg-white text-slate-700 hover:border-teal-300 hover:bg-teal-50",
-              ].join(" ")}
-            >
-              <p className="text-sm font-semibold">
-                {definition.title}
-              </p>
-
-              <p
-                className={[
-                  "mt-1 text-xs",
-                  selected
-                    ? "text-teal-50"
-                    : "text-slate-500",
-                ].join(" ")}
-              >
-                {getShortModeDescription(
-                  definition.key,
-                )}
-              </p>
-            </button>
-          );
-        })}
-      </div>
-    </section>
+      <p className="mt-2 text-xs leading-5 text-slate-500">
+        {description}
+      </p>
+    </div>
   );
 }
 
-function ResultImage({
+function ImageCard({
   title,
   description,
   src,
-  available,
-  compact = false,
+  alt,
 }: {
   title: string;
   description: string;
   src: string;
-  available: boolean;
-  compact?: boolean;
+  alt: string;
 }) {
   return (
-    <figure className="overflow-hidden rounded-xl border border-slate-200">
-      <figcaption className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-        <p className="text-sm font-medium text-slate-700">
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-3">
+        <h3 className="text-base font-semibold text-slate-900">
           {title}
-        </p>
+        </h3>
 
-        <p className="mt-0.5 text-xs text-slate-500">
+        <p className="mt-1 text-sm leading-5 text-slate-500">
           {description}
         </p>
-      </figcaption>
-
-      <div
-        className={[
-          "flex items-center justify-center bg-slate-950 p-3",
-          compact ? "min-h-64" : "min-h-72",
-        ].join(" ")}
-      >
-        {available ? (
-          <img
-            src={src}
-            alt={title}
-            className={[
-              "w-full object-contain",
-              compact ? "max-h-72" : "max-h-96",
-            ].join(" ")}
-          />
-        ) : (
-          <div className="px-6 py-12 text-center">
-            <p className="text-sm font-medium text-slate-300">
-              Result image not found
-            </p>
-
-            <p className="mt-2 text-xs text-slate-500">
-              Run the corresponding training and inference
-              scripts first.
-            </p>
-          </div>
-        )}
       </div>
-    </figure>
+
+      <img
+        src={src}
+        alt={alt}
+        className="w-full rounded-xl border border-slate-100"
+      />
+    </div>
   );
 }
 
-function SourceValue({
+function SectionHeader({
   label,
-  value,
+  title,
+  description,
 }: {
   label: string;
-  value: string;
+  title: string;
+  description: string;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-      <p className="text-xs font-medium text-slate-500">
+    <div className="mb-5">
+      <p className="text-sm font-medium uppercase tracking-wide text-blue-600">
         {label}
       </p>
 
-      <p
-        className="mt-1 truncate text-sm font-semibold text-slate-800"
-        title={value}
-      >
-        {value}
+      <h2 className="mt-1 text-2xl font-semibold text-slate-950">
+        {title}
+      </h2>
+
+      <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+        {description}
       </p>
     </div>
   );
 }
 
-function PipelineStep({
-  number,
-  label,
-}: {
-  number: string;
-  label: string;
-}) {
+export default function SeizureDashboard() {
+  const [selectedMode, setSelectedMode] =
+    useState<ModeKey>("chbmit_multi_file");
+
+  const [status, setStatus] =
+    useState<SeizureStatusResponse | null>(null);
+
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadStatus() {
+      setLoading(true);
+
+      const data = await apiFetch<SeizureStatusResponse>(
+        "/api/seizure/status",
+      );
+
+      setStatus(data);
+      setLoading(false);
+    }
+
+    loadStatus();
+  }, []);
+
+  const selectedResult = RESULT_FILENAMES[selectedMode];
+
+  const evaluationMetrics = status?.evaluation_metrics;
+  const classification = evaluationMetrics?.classification;
+  const falseAlarm =
+    evaluationMetrics?.false_alarm_analysis;
+
+  const evaluationConfusionMatrixUrl = useMemo(() => {
+    return backendMediaUrl(
+      status?.evaluation_outputs?.confusion_matrix?.url,
+    );
+  }, [status]);
+
   return (
-    <div className="flex items-center gap-3 rounded-xl bg-slate-50 p-4">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-600 text-xs font-bold text-white">
-        {number}
-      </span>
+    <main className="min-h-screen bg-slate-50 px-6 py-8 text-slate-900">
+      <div className="mx-auto max-w-7xl">
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-sm font-medium uppercase tracking-wide text-blue-600">
+                NeuroFusion-AI
+              </p>
 
-      <span className="text-sm font-medium text-slate-700">
-        {label}
-      </span>
-    </div>
+              <h1 className="mt-2 text-3xl font-bold text-slate-950">
+                EEG Seizure Detection
+              </h1>
+
+              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+                This page separates the final model evaluation
+                from the demo visualizations. The top section
+                shows the true model performance. The lower
+                section lets you explore example EEG outputs.
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-sm text-slate-500">
+                Backend status
+              </p>
+
+              <p className="mt-1 text-lg font-semibold text-slate-900">
+                {loading
+                  ? "Loading..."
+                  : status?.status ?? "Unavailable"}
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <SectionHeader
+            label="Step 1"
+            title="Final Model Evaluation"
+            description="These numbers come from the final evaluation pipeline, using results/seizure/seizure_metrics.json. This is the most important section for judging model performance."
+          />
+
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <MetricCard
+              label="Sensitivity"
+              value={formatPercent(
+                classification?.sensitivity,
+              )}
+              description="How well the model detects true seizure windows. This is clinically important because missed seizures are dangerous."
+              emphasis
+            />
+
+            <MetricCard
+              label="Specificity"
+              value={formatPercent(
+                classification?.specificity,
+              )}
+              description="How well the model correctly identifies non-seizure windows."
+              emphasis
+            />
+
+            <MetricCard
+              label="Precision"
+              value={formatPercent(
+                classification?.precision,
+              )}
+              description="Among predicted seizure windows, how many were truly seizure."
+            />
+
+            <MetricCard
+              label="F1 score"
+              value={formatPercent(
+                classification?.f1_score,
+              )}
+              description="A balance between sensitivity and precision."
+            />
+
+            <MetricCard
+              label="Accuracy"
+              value={formatPercent(
+                classification?.accuracy,
+              )}
+              description="Overall proportion of correctly classified windows. In seizure data, this should not be interpreted alone."
+            />
+
+            <MetricCard
+              label="False alarms/hour"
+              value={formatNumber(
+                falseAlarm?.false_alarms_per_hour,
+                2,
+              )}
+              description="Estimated false seizure alarm events per non-seizure hour."
+              emphasis
+            />
+          </div>
+
+          {evaluationConfusionMatrixUrl && (
+            <div className="mt-8">
+              <ImageCard
+                title="Final Evaluation Confusion Matrix"
+                description="This confusion matrix belongs to the final evaluation result, not just one demo image mode."
+                src={evaluationConfusionMatrixUrl}
+                alt="Final seizure evaluation confusion matrix"
+              />
+            </div>
+          )}
+        </section>
+
+        <section className="mt-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <SectionHeader
+            label="Step 2"
+            title="Demo Result Viewer"
+            description="This section is for visual exploration only. Changing the mode below changes the example images, but it does not change the final evaluation metrics above."
+          />
+
+          <div className="grid gap-4 md:grid-cols-3">
+            {(
+              Object.keys(MODE_LABELS) as ModeKey[]
+            ).map((mode) => {
+              const isSelected = selectedMode === mode;
+
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setSelectedMode(mode)}
+                  className={[
+                    "rounded-2xl border p-4 text-left shadow-sm transition",
+                    isSelected
+                      ? "border-blue-500 bg-blue-50"
+                      : "border-slate-200 bg-white hover:border-blue-300",
+                  ].join(" ")}
+                >
+                  <p className="text-base font-semibold text-slate-900">
+                    {MODE_LABELS[mode]}
+                  </p>
+
+                  <p className="mt-2 text-sm leading-5 text-slate-500">
+                    {MODE_DESCRIPTIONS[mode]}
+                  </p>
+
+                  {isSelected && (
+                    <p className="mt-3 text-xs font-medium text-blue-700">
+                      Selected demo mode
+                    </p>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-8 grid gap-6 lg:grid-cols-2">
+            <ImageCard
+              title="EEG Waveform"
+              description="This shows a representative EEG signal segment for the selected demo mode."
+              src={mediaUrl(selectedResult.waveform)}
+              alt="EEG waveform"
+            />
+
+            <ImageCard
+              title="Seizure Probability Timeline"
+              description="This shows the predicted seizure probability across time windows for the selected demo mode."
+              src={mediaUrl(selectedResult.timeline)}
+              alt="Seizure probability timeline"
+            />
+
+            <ImageCard
+              title="Demo Confusion Matrix"
+              description="This confusion matrix belongs to the selected demo mode. It is separate from the final evaluation confusion matrix above."
+              src={mediaUrl(selectedResult.confusionMatrix)}
+              alt="Demo seizure confusion matrix"
+            />
+          </div>
+        </section>
+
+        <section className="mt-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <SectionHeader
+            label="Step 3"
+            title="Technical Details"
+            description="These values are useful for debugging and understanding how the final metrics were calculated."
+          />
+
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <MetricCard
+              label="True positive"
+              value={String(
+                classification?.true_positive ?? "N/A",
+              )}
+              description="Seizure windows correctly detected."
+            />
+
+            <MetricCard
+              label="True negative"
+              value={String(
+                classification?.true_negative ?? "N/A",
+              )}
+              description="Non-seizure windows correctly classified."
+            />
+
+            <MetricCard
+              label="False positive"
+              value={String(
+                classification?.false_positive ?? "N/A",
+              )}
+              description="Non-seizure windows incorrectly flagged as seizure."
+            />
+
+            <MetricCard
+              label="False negative"
+              value={String(
+                classification?.false_negative ?? "N/A",
+              )}
+              description="Seizure windows missed by the model."
+            />
+
+            <MetricCard
+              label="Total samples"
+              value={String(
+                classification?.num_samples ?? "N/A",
+              )}
+              description="Number of evaluated EEG windows."
+            />
+
+            <MetricCard
+              label="Seizure samples"
+              value={String(
+                classification?.num_positive_samples ?? "N/A",
+              )}
+              description="Number of true seizure windows."
+            />
+
+            <MetricCard
+              label="False alarm events"
+              value={String(
+                falseAlarm?.false_alarm_events ?? "N/A",
+              )}
+              description="Consecutive false-positive windows merged into alarm events."
+            />
+
+            <MetricCard
+              label="Step seconds"
+              value={formatNumber(
+                falseAlarm?.step_seconds,
+                1,
+              )}
+              description="Time interval between adjacent EEG windows."
+            />
+          </div>
+        </section>
+      </div>
+    </main>
   );
-}
-
-function getShortModeDescription(
-  mode: ModeKey,
-): string {
-  switch (mode) {
-    case "synthetic":
-      return "Pipeline validation";
-
-    case "chbmit_one_file":
-      return "Single real EDF";
-
-    case "chbmit_multi_file":
-      return "Multiple real EDFs";
-  }
-}
-
-function getSourceDescription(
-  mode: ModeKey,
-  data: SeizureMode,
-): string {
-  switch (mode) {
-    case "synthetic":
-      return (
-        "Synthetic mode is intended to verify the complete EEG " +
-        "feature-extraction, classification, and visualization pipeline."
-      );
-
-    case "chbmit_one_file":
-      return (
-        `One-file mode analyzes ${data.file ?? "one CHB-MIT EDF recording"}. ` +
-        "It is useful for confirming that real EDF loading and seizure-interval labeling work correctly."
-      );
-
-    case "chbmit_multi_file":
-      return (
-        `Multi-file mode uses subject ${data.subject ?? "chb01"} across multiple CHB-MIT recordings. ` +
-        "It is a subject-level research prototype rather than a patient-independent clinical evaluation."
-      );
-  }
 }
