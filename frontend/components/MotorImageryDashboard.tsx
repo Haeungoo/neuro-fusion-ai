@@ -30,11 +30,19 @@ type MotorMetrics = {
   num_right_hand_trials?: number;
   model?: string;
   dataset?: string;
+  subject?: number;
+  runs?: number[];
+  low_freq?: number;
+  high_freq?: number;
+  tmin?: number;
+  tmax?: number;
   num_csp_components?: number;
   num_channels?: number;
   num_samples_per_trial?: number;
+  sampling_frequency?: number;
   num_train_trials?: number;
   num_test_trials?: number;
+  num_cv_splits?: number;
 };
 
 type MotorStatusResponse = {
@@ -52,6 +60,12 @@ type MotorStatusResponse = {
     model?: FileInfo;
     model_file?: FileInfo;
   };
+  subject_search?: {
+    available?: boolean;
+    best_subject?: MotorMetrics | null;
+    comparison_csv?: FileInfo;
+    comparison_chart?: FileInfo;
+  };
 };
 
 function formatPercent(value?: number): string {
@@ -68,6 +82,17 @@ function formatInteger(value?: number): string {
   }
 
   return String(value);
+}
+
+function formatNumber(
+  value?: number,
+  digits: number = 2,
+): string {
+  if (value === undefined || value === null) {
+    return "N/A";
+  }
+
+  return value.toFixed(digits);
 }
 
 function MetricCard({
@@ -157,8 +182,21 @@ export default function MotorImageryDashboard() {
 
   const metrics = status?.metrics;
 
+  const bestSubject =
+    status?.subject_search?.best_subject ?? null;
+
   const confusionMatrixUrl = useMemo(() => {
     const url = status?.outputs?.confusion_matrix?.url;
+
+    if (!url) {
+      return null;
+    }
+
+    return mediaUrl(url);
+  }, [status]);
+
+  const subjectComparisonChartUrl = useMemo(() => {
+    const url = status?.subject_search?.comparison_chart?.url;
 
     if (!url) {
       return null;
@@ -214,7 +252,7 @@ export default function MotorImageryDashboard() {
           <SectionHeader
             label="Step 1"
             title="Final Motor Imagery Evaluation"
-            description="These metrics come from the CSP + LDA motor imagery result file."
+            description="These metrics come from the current CSP + LDA motor imagery result file. After subject search, this shows the best selected PhysioNet subject."
           />
 
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -259,7 +297,7 @@ export default function MotorImageryDashboard() {
             <MetricCard
               label="Total trials"
               value={formatInteger(metrics?.num_trials)}
-              description="Number of test trials used for evaluation."
+              description="Number of trials used for evaluation."
             />
 
             <MetricCard
@@ -295,7 +333,7 @@ export default function MotorImageryDashboard() {
               <p className="mt-1 text-sm leading-6 text-amber-800">
                 Run{" "}
                 <code className="rounded bg-white px-1 py-0.5">
-                  python -m scripts.train_motor_imagery_csp_lda
+                  python -m scripts.train_motor_imagery_physionet_subject_search
                 </code>{" "}
                 to generate the motor imagery result files.
               </p>
@@ -310,9 +348,11 @@ export default function MotorImageryDashboard() {
             description="CSP extracts spatial EEG patterns that separate left-hand and right-hand motor imagery. LDA then classifies those features."
           />
 
-          <div className="grid gap-3 md:grid-cols-5">
+          <div className="grid gap-3 md:grid-cols-7">
             {(status?.pipeline ?? [
               "EEG trials",
+              "Band-pass filtering",
+              "Epoch extraction",
               "CSP spatial filtering",
               "Log-variance features",
               "Linear Discriminant Analysis",
@@ -394,6 +434,108 @@ export default function MotorImageryDashboard() {
               description="Trial-level prediction CSV output."
             />
           </div>
+        </section>
+
+        <section className="mt-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <SectionHeader
+            label="Step 4"
+            title="PhysioNet Subject Search"
+            description="Because real EEG motor imagery varies strongly across people, this section compares multiple PhysioNet subjects and selects the best-performing subject for dashboard visualization."
+          />
+
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <MetricCard
+              label="Best subject"
+              value={formatInteger(bestSubject?.subject)}
+              description="PhysioNet subject with the best accuracy and F1 score among tested subjects."
+              emphasis
+            />
+
+            <MetricCard
+              label="Best accuracy"
+              value={formatPercent(bestSubject?.accuracy)}
+              description="Accuracy from cross-validation for the selected subject."
+              emphasis
+            />
+
+            <MetricCard
+              label="Best F1 score"
+              value={formatPercent(bestSubject?.f1_score)}
+              description="F1 score from cross-validation for the selected subject."
+            />
+
+            <MetricCard
+              label="CV splits"
+              value={formatInteger(bestSubject?.num_cv_splits)}
+              description="Number of cross-validation folds used in subject search."
+            />
+
+            <MetricCard
+              label="Band-pass"
+              value={`${formatNumber(bestSubject?.low_freq, 0)}–${formatNumber(
+                bestSubject?.high_freq,
+                0,
+              )} Hz`}
+              description="Frequency band used before CSP feature extraction."
+            />
+
+            <MetricCard
+              label="Epoch window"
+              value={`${formatNumber(bestSubject?.tmin, 1)}–${formatNumber(
+                bestSubject?.tmax,
+                1,
+              )} s`}
+              description="Time window after cue used for motor imagery classification."
+            />
+
+            <MetricCard
+              label="Channels"
+              value={formatInteger(bestSubject?.num_channels)}
+              description="Number of EEG channels used from PhysioNet EEGBCI."
+            />
+
+            <MetricCard
+              label="Comparison CSV"
+              value={
+                status?.subject_search?.comparison_csv?.exists
+                  ? "Saved"
+                  : "Missing"
+              }
+              description="CSV file containing subject-level comparison results."
+            />
+          </div>
+
+          {subjectComparisonChartUrl ? (
+            <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <h3 className="text-lg font-semibold text-slate-900">
+                Subject Accuracy Comparison
+              </h3>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Accuracy comparison across tested PhysioNet subjects.
+              </p>
+
+              <img
+                src={subjectComparisonChartUrl}
+                alt="PhysioNet motor imagery subject comparison"
+                className="mt-4 w-full rounded-xl border border-slate-100 bg-white"
+              />
+            </div>
+          ) : (
+            <div className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <h3 className="text-lg font-semibold text-amber-900">
+                Subject comparison not found
+              </h3>
+
+              <p className="mt-1 text-sm leading-6 text-amber-800">
+                Run{" "}
+                <code className="rounded bg-white px-1 py-0.5">
+                  python -m scripts.train_motor_imagery_physionet_subject_search
+                </code>{" "}
+                to generate subject comparison outputs.
+              </p>
+            </div>
+          )}
         </section>
       </div>
     </main>

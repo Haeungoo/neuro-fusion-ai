@@ -95,14 +95,39 @@ def motor_status() -> dict[str, Any]:
         / "motor_imagery_csp_lda.joblib"
     )
 
+    subject_comparison_csv_path = (
+        RESULTS_DIR
+        / "physionet_subject_comparison.csv"
+    )
+
+    subject_comparison_best_path = (
+        RESULTS_DIR
+        / "physionet_subject_comparison_best.json"
+    )
+
+    subject_comparison_chart_path = (
+        RESULTS_DIR
+        / "physionet_subject_comparison_accuracy.png"
+    )
+
     metrics = read_json(
         metrics_path
+    )
+
+    best_subject = read_json(
+        subject_comparison_best_path
     )
 
     is_ready = (
         metrics_path.exists()
         and predictions_path.exists()
         and confusion_matrix_path.exists()
+    )
+
+    has_subject_search = (
+        subject_comparison_csv_path.exists()
+        and subject_comparison_best_path.exists()
+        and subject_comparison_chart_path.exists()
     )
 
     return {
@@ -113,9 +138,9 @@ def motor_status() -> dict[str, Any]:
             "right-hand motor imagery classification."
         ),
         "dataset_note": (
-            "Current prototype uses synthetic motor imagery "
-            "EEG-like data. Later this can be replaced with "
-            "real motor imagery EEG data."
+            "The module supports both a synthetic EEG-like baseline "
+            "and a real EEG pipeline using the PhysioNet EEGBCI "
+            "motor imagery dataset."
         ),
         "labels": {
             "0": "left_hand_imagery",
@@ -123,6 +148,8 @@ def motor_status() -> dict[str, Any]:
         },
         "pipeline": [
             "EEG trials",
+            "Band-pass filtering",
+            "Epoch extraction",
             "CSP spatial filtering",
             "Log-variance features",
             "Linear Discriminant Analysis",
@@ -144,6 +171,16 @@ def motor_status() -> dict[str, Any]:
             ),
             "model_file": file_info(
                 model_path
+            ),
+        },
+        "subject_search": {
+            "available": has_subject_search,
+            "best_subject": best_subject,
+            "comparison_csv": file_info(
+                subject_comparison_csv_path
+            ),
+            "comparison_chart": file_info(
+                subject_comparison_chart_path
             ),
         },
     }
