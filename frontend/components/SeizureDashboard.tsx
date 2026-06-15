@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { API_BASE_URL, apiFetch, mediaUrl } from "@/lib/api";
+import { apiFetch, mediaUrl } from "@/app/lib/api";
 
 type ModeKey =
   | "synthetic"
@@ -148,10 +148,6 @@ function backendMediaUrl(url?: string | null): string | null {
 
   if (url.startsWith("http://") || url.startsWith("https://")) {
     return url;
-  }
-
-  if (url.startsWith("/media/results/")) {
-    return `${API_BASE_URL}${url}`;
   }
 
   return mediaUrl(url);

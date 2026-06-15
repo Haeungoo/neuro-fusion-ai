@@ -121,9 +121,9 @@ def main() -> None:
     print("Training Random Forest on CHB-MIT multi-file data...")
 
     result = train_random_forest_seizure(
-        X_features=X_all,
+        X=X_all,
         y=y_all,
-        model_path="models/seizure_rf_chbmit_multi_file.pkl",
+        file_names=["models/seizure_rf_chbmit_multi_file.pkl"],
         test_size=0.25,
         random_state=42,
     )

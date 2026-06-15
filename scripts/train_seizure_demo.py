@@ -33,6 +33,15 @@ def main():
     print('label counts:', np.bincount(y))
     result = train_random_forest_seizure(X_features, y)
     print('Training complete.')
-    for k, v in result.items(): print(f'{k}: {v}')
+    names = [
+        "model",
+        "X_test",
+        "y_test",
+        "y_pred",
+        "y_prob",
+        "test_file_names",
+        "test_window_start_times",
+    ]
+    for name, value in zip(names, result): print(f"{name}: {value}")
     
 if __name__ == '__main__': main()

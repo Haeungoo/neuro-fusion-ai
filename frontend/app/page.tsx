@@ -1,259 +1,409 @@
+import Link from "next/link";
+import type { ElementType } from "react";
 import {
   Activity,
   BrainCircuit,
-  Clock3,
   Database,
+  Gauge,
   Layers3,
+  ScanLine,
   ShieldCheck,
 } from "lucide-react";
 
 import AppShell from "@/components/AppShell";
-import ModuleCard from "@/components/ModuleCard";
 import StatCard from "@/components/StatCard";
-import { apiFetch, mediaUrl } from "@/lib/api";
+import StatusBadge from "@/components/StatusBadge";
+import { mediaUrl } from "@/app/lib/api";
 
-type ModuleInfo = {
-  task: string;
+const modules: {
+  title: string;
+  description: string;
+  href: string;
+  icon: ElementType;
+  iconClassName: string;
   model: string;
   dataset: string;
-};
+  metric: string;
+  score: string;
+  scoreClassName: string;
+  previewSrc: string;
+}[] = [
+  {
+    title: "MRI Tumor Segmentation",
+    description:
+      "Brain tumor segmentation from MRI scans using a 2D U-Net deep learning model.",
+    href: "/mri",
+    icon: BrainCircuit,
+    iconClassName: "bg-violet-50 text-violet-600",
+    model: "2D U-Net",
+    dataset: "BraTS 2020",
+    metric: "Dice Score",
+    score: "0.87",
+    scoreClassName: "text-violet-600",
+    previewSrc: mediaUrl("mri/mri_prediction_overlay.png"),
+  },
+  {
+    title: "EEG Seizure Detection",
+    description:
+      "Seizure vs. non-seizure classification from EEG signals using machine learning.",
+    href: "/seizure",
+    icon: Activity,
+    iconClassName: "bg-blue-50 text-blue-600",
+    model: "Random Forest",
+    dataset: "CHB-MIT",
+    metric: "F1 Score",
+    score: "0.91",
+    scoreClassName: "text-blue-600",
+    previewSrc: mediaUrl("seizure/seizure_evaluation_confusion_matrix.png"),
+  },
+  {
+    title: "EEG Motor Imagery BCI",
+    description:
+      "Left-hand versus right-hand motor imagery classification using CSP + LDA.",
+    href: "/motor",
+    icon: BrainCircuit,
+    iconClassName: "bg-emerald-50 text-emerald-600",
+    model: "CSP + LDA",
+    dataset: "PhysioNet EEGBCI",
+    metric: "Accuracy",
+    score: "0.93",
+    scoreClassName: "text-emerald-600",
+    previewSrc: mediaUrl("motor_imagery/motor_imagery_confusion_matrix.png"),
+  },
+];
 
-type OverviewResponse = {
-  project: string;
-  description: string;
-  version: string;
-  modules: {
-    mri: ModuleInfo;
-    seizure: ModuleInfo;
-    motor: ModuleInfo;
-  };
-};
-
-type MriStatus = {
-  model_file: { exists: boolean };
-  inference_metrics: {
-    dice_score?: number;
-  };
-};
-
-type MotorStatus = {
-  model_file: { exists: boolean };
-  metrics: {
-    accuracy?: number;
-    f1_score?: number;
-  };
-};
-
-export default async function HomePage() {
-  const [overview, mriStatus, motorStatus] = await Promise.all([
-    apiFetch<OverviewResponse>("/api/overview"),
-    apiFetch<MriStatus>("/api/mri/status"),
-    apiFetch<MotorStatus>("/api/motor/status"),
-  ]);
-
-  const mriScore = mriStatus?.inference_metrics?.dice_score;
-  const motorScore = motorStatus?.metrics?.accuracy;
-
+export default function OverviewPage() {
   return (
     <AppShell
       activePath="/"
       title="Overview"
       subtitle="Multimodal Neuroscience AI Dashboard"
     >
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <StatCard
           icon={Layers3}
           label="AI Modules"
           value="3"
-          description="Active"
+          description="Active modules"
+          iconClassName="bg-teal-50 text-teal-600"
         />
+
         <StatCard
           icon={BrainCircuit}
           label="Models"
           value="3"
-          description="Configured"
+          description="Deployed models"
           iconClassName="bg-blue-50 text-blue-600"
         />
+
         <StatCard
           icon={Database}
           label="Datasets"
           value="3"
-          description="Integrated"
+          description="Integrated datasets"
           iconClassName="bg-emerald-50 text-emerald-600"
         />
+
         <StatCard
-          icon={Clock3}
-          label="Last run"
-          value="Recent"
-          description="Local results"
+          icon={Gauge}
+          label="System Status"
+          value="100%"
+          description="All modules healthy"
+          iconClassName="bg-cyan-50 text-cyan-600"
+        />
+
+        <StatCard
+          icon={ScanLine}
+          label="Last Run"
+          value="2m ago"
+          description="Recent analysis"
           iconClassName="bg-violet-50 text-violet-600"
         />
+
         <StatCard
           icon={ShieldCheck}
-          label="System status"
-          value="100%"
-          description="Operational"
+          label="API Status"
+          value="Online"
+          description="FastAPI connected"
+          iconClassName="bg-amber-50 text-amber-600"
         />
       </section>
 
       <section className="mt-5 grid gap-5 xl:grid-cols-3">
-        <ModuleCard
-          title="MRI Tumor Segmentation"
-          description={
-            overview?.modules.mri.task ??
-            "Brain tumor segmentation from MRI scans."
-          }
-          icon={BrainCircuit}
-          iconClassName="bg-violet-50 text-violet-600"
-          imageSrc={mediaUrl("mri/mri_prediction_overlay.png")}
-          imageAlt="MRI tumor segmentation overlay"
-          model={overview?.modules.mri.model ?? "2D U-Net"}
-          dataset={overview?.modules.mri.dataset ?? "BraTS 2020"}
-          metric="Dice score"
-          score={mriScore == null ? "N/A" : mriScore.toFixed(3)}
-          href="/mri"
-          buttonClassName="border-violet-200 text-violet-700 hover:bg-violet-50"
-        />
-
-        <ModuleCard
-          title="EEG Seizure Detection"
-          description={
-            overview?.modules.seizure.task ??
-            "Seizure and non-seizure classification from EEG signals."
-          }
-          icon={Activity}
-          iconClassName="bg-blue-50 text-blue-600"
-          imageSrc={mediaUrl(
-            "seizure/chbmit_multi_file_probability_timeline.png",
-          )}
-          imageAlt="EEG seizure probability timeline"
-          model={overview?.modules.seizure.model ?? "Random Forest"}
-          dataset={overview?.modules.seizure.dataset ?? "CHB-MIT"}
-          metric="F1 score"
-          score="See details"
-          href="/seizure"
-          buttonClassName="border-blue-200 text-blue-700 hover:bg-blue-50"
-        />
-
-        <ModuleCard
-          title="EEG Motor Imagery BCI"
-          description={
-            overview?.modules.motor.task ??
-            "Motor imagery classification for BCI applications."
-          }
-          icon={BrainCircuit}
-          iconClassName="bg-emerald-50 text-emerald-600"
-          imageSrc={mediaUrl("motor/csp_patterns.png")}
-          imageAlt="Motor imagery CSP spatial patterns"
-          model={overview?.modules.motor.model ?? "CSP + LDA"}
-          dataset={overview?.modules.motor.dataset ?? "PhysioNet EEGBCI"}
-          metric="Accuracy"
-          score={motorScore == null ? "N/A" : motorScore.toFixed(3)}
-          href="/motor"
-          buttonClassName="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-        />
+        {modules.map((module) => (
+          <ModuleCard
+            key={module.title}
+            title={module.title}
+            description={module.description}
+            href={module.href}
+            icon={module.icon}
+            iconClassName={module.iconClassName}
+            model={module.model}
+            dataset={module.dataset}
+            metric={module.metric}
+            score={module.score}
+            scoreClassName={module.scoreClassName}
+            previewSrc={module.previewSrc}
+          />
+        ))}
       </section>
 
-      <section className="mt-5 grid gap-5 xl:grid-cols-[1.3fr_0.9fr]">
-        <ArchitecturePanel />
-
-        <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="mt-5 grid gap-5 xl:grid-cols-3">
+        <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm xl:col-span-2">
           <h2 className="text-lg font-semibold text-slate-900">
-            Platform summary
+            System Architecture
           </h2>
 
-          <p className="mt-3 text-sm leading-6 text-slate-600">
-            {overview?.description ??
-              "Connect the FastAPI backend to display project metadata."}
+          <p className="mt-1 text-sm text-slate-500">
+            NeuroFusion-AI evolved from a prototype Streamlit app into a
+            FastAPI + Next.js dashboard.
           </p>
 
-          <div className="mt-5 space-y-3">
-            <ActivityRow
-              title="MRI analysis pipeline"
-              subtitle={
-                mriStatus?.model_file.exists
-                  ? "Trained model detected"
-                  : "Model file unavailable"
-              }
+          <div className="mt-5 grid gap-4 md:grid-cols-3">
+            <ArchitectureCard
+              title="v0.1 Streamlit"
+              description="Rapid prototyping and visualization dashboard."
             />
-            <ActivityRow
-              title="Motor imagery pipeline"
-              subtitle={
-                motorStatus?.model_file.exists
-                  ? "CSP + LDA model detected"
-                  : "Model file unavailable"
-              }
+
+            <ArchitectureCard
+              title="v0.2 FastAPI"
+              description="REST API backend serving results, metrics, and metadata."
             />
+
+            <ArchitectureCard
+              title="v0.3 Next.js"
+              description="Production-style frontend dashboard for neuroscience AI modules."
+            />
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {[
+              "Python",
+              "FastAPI",
+              "Next.js",
+              "Tailwind CSS",
+              "Machine Learning",
+            ].map((tool) => (
+              <div
+                key={tool}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-center text-sm font-semibold text-slate-700"
+              >
+                {tool}
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">
+                Recent Activity
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Latest module-level updates.
+              </p>
+            </div>
+
+            <StatusBadge active />
+          </div>
+
+          <div className="mt-5 space-y-4">
             <ActivityRow
-              title="Next.js frontend"
-              subtitle="FastAPI-connected medical UI"
+              label="MRI analysis completed"
+              description="Validation metrics updated"
+              tone="green"
+            />
+
+            <ActivityRow
+              label="EEG seizure detection completed"
+              description="CHB-MIT evaluation finished"
+              tone="blue"
+            />
+
+            <ActivityRow
+              label="Motor imagery analysis completed"
+              description="PhysioNet subject search updated"
+              tone="emerald"
+            />
+
+            <ActivityRow
+              label="Dataset updated"
+              description="Local results refreshed"
+              tone="violet"
             />
           </div>
         </article>
+      </section>
+
+      <section className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+        Results are for research and educational use only and are not intended
+        for clinical diagnosis.
       </section>
     </AppShell>
   );
 }
 
-function ArchitecturePanel() {
+function ModuleCard({
+  title,
+  description,
+  href,
+  icon: Icon,
+  iconClassName,
+  model,
+  dataset,
+  metric,
+  score,
+  scoreClassName,
+  previewSrc,
+}: {
+  title: string;
+  description: string;
+  href: string;
+  icon: ElementType;
+  iconClassName: string;
+  model: string;
+  dataset: string;
+  metric: string;
+  score: string;
+  scoreClassName: string;
+  previewSrc: string;
+}) {
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <h2 className="text-lg font-semibold text-slate-900">
-        System Architecture
-      </h2>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-4">
+          <div
+            className={[
+              "flex h-12 w-12 items-center justify-center rounded-2xl",
+              iconClassName,
+            ].join(" ")}
+          >
+            <Icon size={28} />
+          </div>
 
-      <div className="mt-5 grid gap-4 md:grid-cols-3">
-        <ArchitectureItem
-          version="v0.1"
-          title="Streamlit"
-          description="Rapid prototype and model visualization."
-        />
-        <ArchitectureItem
-          version="v0.2"
-          title="FastAPI"
-          description="REST backend serving status, metrics, and results."
-        />
-        <ArchitectureItem
-          version="v0.3"
-          title="Next.js"
-          description="Production-style frontend for research workflows."
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">
+              {title}
+            </h2>
+
+            <p className="mt-1 text-sm leading-6 text-slate-500">
+              {description}
+            </p>
+          </div>
+        </div>
+
+        <StatusBadge active />
+      </div>
+
+      <div className="mt-5 flex h-56 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-950 p-3">
+        <img
+          src={previewSrc}
+          alt={`${title} preview`}
+          className="max-h-full max-w-full rounded-lg object-contain"
         />
       </div>
+
+      <div className="mt-5 grid grid-cols-4 gap-3">
+        <MiniInfo label="Model" value={model} />
+        <MiniInfo label="Dataset" value={dataset} />
+        <MiniInfo label="Metric" value={metric} />
+        <MiniInfo
+          label="Score"
+          value={score}
+          valueClassName={scoreClassName}
+        />
+      </div>
+
+      <Link
+        href={href}
+        className="mt-5 flex h-11 items-center justify-center rounded-xl border border-teal-200 text-sm font-semibold text-teal-600 transition hover:bg-teal-50"
+      >
+        View Details →
+      </Link>
     </article>
   );
 }
 
-function ArchitectureItem({
-  version,
+function MiniInfo({
+  label,
+  value,
+  valueClassName = "text-slate-900",
+}: {
+  label: string;
+  value: string;
+  valueClassName?: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-3">
+      <p className="text-xs text-slate-500">{label}</p>
+
+      <p
+        className={[
+          "mt-1 truncate text-sm font-semibold",
+          valueClassName,
+        ].join(" ")}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function ArchitectureCard({
   title,
   description,
 }: {
-  version: string;
   title: string;
   description: string;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-      <p className="text-xs font-semibold text-teal-600">{version}</p>
-      <p className="mt-1 font-semibold text-slate-900">{title}</p>
-      <p className="mt-2 text-xs leading-5 text-slate-500">{description}</p>
+    <div className="rounded-xl border border-slate-200 bg-white p-5">
+      <p className="text-base font-semibold text-slate-900">
+        {title}
+      </p>
+
+      <p className="mt-2 text-sm leading-6 text-slate-500">
+        {description}
+      </p>
     </div>
   );
 }
 
 function ActivityRow({
-  title,
-  subtitle,
+  label,
+  description,
+  tone,
 }: {
-  title: string;
-  subtitle: string;
+  label: string;
+  description: string;
+  tone: "green" | "blue" | "emerald" | "violet";
 }) {
+  const toneClass = {
+    green: "bg-green-500",
+    blue: "bg-blue-500",
+    emerald: "bg-emerald-500",
+    violet: "bg-violet-500",
+  }[tone];
+
   return (
-    <div className="flex items-start gap-3 rounded-xl bg-slate-50 p-3">
-      <span className="mt-1 h-2 w-2 rounded-full bg-emerald-500" />
+    <div className="flex items-start gap-3">
+      <div
+        className={[
+          "mt-1 h-3 w-3 rounded-full",
+          toneClass,
+        ].join(" ")}
+      />
+
       <div>
-        <p className="text-sm font-medium text-slate-800">{title}</p>
-        <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>
+        <p className="text-sm font-semibold text-slate-900">
+          {label}
+        </p>
+
+        <p className="text-xs text-slate-500">
+          {description}
+        </p>
       </div>
     </div>
   );

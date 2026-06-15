@@ -3,7 +3,7 @@ import { BrainCircuit, Database, Gauge, ScanLine } from "lucide-react";
 import AppShell from "@/components/AppShell";
 import StatCard from "@/components/StatCard";
 import StatusBadge from "@/components/StatusBadge";
-import { apiFetch, mediaUrl } from "@/lib/api";
+import { apiFetch, mediaUrl } from "@/app/lib/api";
 
 type FileInfo = {
   path: string;

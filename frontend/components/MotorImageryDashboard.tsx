@@ -1,12 +1,25 @@
 "use client";
 
+import {
+  Activity,
+  BarChart3,
+  BrainCircuit,
+  Database,
+  Gauge,
+  GitCompare,
+  ScanLine,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+
+import AppShell from "@/components/AppShell";
+import StatCard from "@/components/StatCard";
+import StatusBadge from "@/components/StatusBadge";
 import { apiFetch, mediaUrl } from "@/app/lib/api";
 
 type FileInfo = {
-  exists: boolean;
   path?: string;
-  url: string | null;
+  exists: boolean;
+  url?: string | null;
 };
 
 type MotorMetrics = {
@@ -45,14 +58,17 @@ type MotorMetrics = {
   num_cv_splits?: number;
 };
 
-type MotorStatusResponse = {
+type MotorStatus = {
   module?: string;
   status?: string;
   description?: string;
   dataset_note?: string;
   labels?: Record<string, string>;
+
   pipeline?: string[];
+
   metrics?: MotorMetrics | null;
+
   outputs?: {
     metrics_json?: FileInfo;
     predictions_csv?: FileInfo;
@@ -60,6 +76,7 @@ type MotorStatusResponse = {
     model?: FileInfo;
     model_file?: FileInfo;
   };
+
   subject_search?: {
     available?: boolean;
     best_subject?: MotorMetrics | null;
@@ -68,110 +85,15 @@ type MotorStatusResponse = {
   };
 };
 
-function formatPercent(value?: number): string {
-  if (value === undefined || value === null) {
-    return "N/A";
-  }
-
-  return `${(value * 100).toFixed(1)}%`;
-}
-
-function formatInteger(value?: number): string {
-  if (value === undefined || value === null) {
-    return "N/A";
-  }
-
-  return String(value);
-}
-
-function formatNumber(
-  value?: number,
-  digits: number = 2,
-): string {
-  if (value === undefined || value === null) {
-    return "N/A";
-  }
-
-  return value.toFixed(digits);
-}
-
-function MetricCard({
-  label,
-  value,
-  description,
-  emphasis = false,
-}: {
-  label: string;
-  value: string;
-  description: string;
-  emphasis?: boolean;
-}) {
-  return (
-    <div
-      className={[
-        "rounded-2xl border p-4 shadow-sm",
-        emphasis
-          ? "border-blue-200 bg-blue-50"
-          : "border-slate-200 bg-white",
-      ].join(" ")}
-    >
-      <p className="text-sm text-slate-500">{label}</p>
-
-      <p
-        className={[
-          "mt-2 text-2xl font-semibold",
-          emphasis ? "text-blue-700" : "text-slate-900",
-        ].join(" ")}
-      >
-        {value}
-      </p>
-
-      <p className="mt-2 text-xs leading-5 text-slate-500">
-        {description}
-      </p>
-    </div>
-  );
-}
-
-function SectionHeader({
-  label,
-  title,
-  description,
-}: {
-  label: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="mb-5">
-      <p className="text-sm font-medium uppercase tracking-wide text-blue-600">
-        {label}
-      </p>
-
-      <h2 className="mt-1 text-2xl font-semibold text-slate-950">
-        {title}
-      </h2>
-
-      <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-        {description}
-      </p>
-    </div>
-  );
-}
-
 export default function MotorImageryDashboard() {
-  const [status, setStatus] =
-    useState<MotorStatusResponse | null>(null);
-
+  const [status, setStatus] = useState<MotorStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadStatus() {
       setLoading(true);
 
-      const data = await apiFetch<MotorStatusResponse>(
-        "/api/motor/status",
-      );
+      const data = await apiFetch<MotorStatus>("/api/motor/status");
 
       setStatus(data);
       setLoading(false);
@@ -181,363 +103,375 @@ export default function MotorImageryDashboard() {
   }, []);
 
   const metrics = status?.metrics;
-
-  const bestSubject =
-    status?.subject_search?.best_subject ?? null;
+  const bestSubject = status?.subject_search?.best_subject ?? null;
 
   const confusionMatrixUrl = useMemo(() => {
     const url = status?.outputs?.confusion_matrix?.url;
 
-    if (!url) {
-      return null;
+    if (url) {
+      return mediaUrl(url);
     }
 
-    return mediaUrl(url);
+    return mediaUrl("motor_imagery/motor_imagery_confusion_matrix.png");
   }, [status]);
 
   const subjectComparisonChartUrl = useMemo(() => {
     const url = status?.subject_search?.comparison_chart?.url;
 
-    if (!url) {
-      return null;
+    if (url) {
+      return mediaUrl(url);
     }
 
-    return mediaUrl(url);
+    return mediaUrl(
+      "motor_imagery/physionet_subject_comparison_accuracy.png",
+    );
   }, [status]);
 
-  const modelOutput =
+  const modelFile =
     status?.outputs?.model_file ?? status?.outputs?.model;
 
   return (
-    <main className="min-h-screen bg-slate-50 px-6 py-8 text-slate-900">
-      <div className="mx-auto max-w-7xl">
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <p className="text-sm font-medium uppercase tracking-wide text-blue-600">
-                NeuroFusion-AI
-              </p>
+    <AppShell
+      activePath="/motor"
+      title="EEG Motor Imagery BCI"
+      subtitle="PhysioNet EEGBCI analysis using CSP + LDA"
+    >
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+        <StatCard
+          icon={Gauge}
+          label="Accuracy"
+          value={formatMetric(metrics?.accuracy)}
+          description="Current selected subject"
+          iconClassName="bg-emerald-50 text-emerald-600"
+        />
 
-              <h1 className="mt-2 text-3xl font-bold text-slate-950">
-                EEG Motor Imagery BCI
-              </h1>
+        <StatCard
+          icon={BarChart3}
+          label="F1 Score"
+          value={formatMetric(metrics?.f1_score)}
+          description="Classification balance"
+          iconClassName="bg-teal-50 text-teal-600"
+        />
 
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-                CSP + LDA baseline for classifying left-hand versus
-                right-hand motor imagery EEG trials.
-              </p>
+        <StatCard
+          icon={GitCompare}
+          label="Best subject"
+          value={formatCount(bestSubject?.subject)}
+          description="PhysioNet subject search"
+          iconClassName="bg-blue-50 text-blue-600"
+        />
 
-              {status?.dataset_note && (
-                <p className="mt-3 max-w-3xl rounded-2xl bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
-                  {status.dataset_note}
-                </p>
-              )}
-            </div>
+        <StatCard
+          icon={Database}
+          label="Channels"
+          value={formatCount(metrics?.num_channels)}
+          description="EEG channels"
+          iconClassName="bg-cyan-50 text-cyan-600"
+        />
 
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-sm text-slate-500">
-                Backend status
-              </p>
+        <StatCard
+          icon={BrainCircuit}
+          label="CSP filters"
+          value={formatCount(metrics?.num_csp_components)}
+          description="Spatial components"
+          iconClassName="bg-violet-50 text-violet-600"
+        />
 
-              <p className="mt-1 text-lg font-semibold text-slate-900">
-                {loading
-                  ? "Loading..."
-                  : status?.status ?? "Unavailable"}
-              </p>
-            </div>
+        <StatCard
+          icon={Activity}
+          label="Status"
+          value={loading ? "Loading" : status?.status ?? "N/A"}
+          description="Backend output check"
+          iconClassName="bg-amber-50 text-amber-600"
+        />
+      </section>
+
+      <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">
+              Motor imagery classification
+            </h2>
+
+            <p className="mt-1 text-sm text-slate-500">
+              Left-hand versus right-hand EEG motor imagery classification
+              using CSP spatial filtering and Linear Discriminant Analysis.
+            </p>
           </div>
-        </section>
 
-        <section className="mt-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <SectionHeader
-            label="Step 1"
-            title="Final Motor Imagery Evaluation"
-            description="These metrics come from the current CSP + LDA motor imagery result file. After subject search, this shows the best selected PhysioNet subject."
+          <StatusBadge active={modelFile?.exists ?? false} />
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <ImagePanel
+            title="Confusion matrix"
+            src={confusionMatrixUrl}
+            compact
           />
 
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <MetricCard
-              label="Accuracy"
-              value={formatPercent(metrics?.accuracy)}
-              description="Overall proportion of correctly classified trials."
-              emphasis
-            />
+          <InfoPanel
+            title="Evaluation metrics"
+            values={[
+              ["Accuracy", formatMetric(metrics?.accuracy)],
+              ["Precision", formatMetric(metrics?.precision)],
+              ["Recall", formatMetric(metrics?.recall)],
+              ["Specificity", formatMetric(metrics?.specificity)],
+              ["Balanced accuracy", formatMetric(metrics?.balanced_accuracy)],
+              ["Total trials", formatCount(metrics?.num_trials)],
+            ]}
+          />
+        </div>
+      </section>
 
-            <MetricCard
-              label="Precision"
-              value={formatPercent(metrics?.precision)}
-              description="Among predicted right-hand trials, how many were truly right-hand imagery."
-            />
+      <section className="mt-5 grid gap-5 lg:grid-cols-2">
+        <InfoPanel
+          title="Model details"
+          values={[
+            ["Model", metrics?.model ?? "CSP + LDA"],
+            ["Dataset", metrics?.dataset ?? "N/A"],
+            ["Subject", formatCount(metrics?.subject)],
+            ["Runs", metrics?.runs?.join(", ") ?? "N/A"],
+            ["CSP components", formatCount(metrics?.num_csp_components)],
+            ["Sampling frequency", formatHz(metrics?.sampling_frequency)],
+          ]}
+        />
 
-            <MetricCard
-              label="Recall"
-              value={formatPercent(metrics?.recall)}
-              description="How well the model detects true right-hand imagery trials."
-            />
+        <InfoPanel
+          title="Classification counts"
+          values={[
+            ["True positive", formatCount(metrics?.true_positive)],
+            ["True negative", formatCount(metrics?.true_negative)],
+            ["False positive", formatCount(metrics?.false_positive)],
+            ["False negative", formatCount(metrics?.false_negative)],
+            ["Predictions CSV", status?.outputs?.predictions_csv?.exists ? "Saved" : "Missing"],
+            ["Model file", modelFile?.exists ? "Saved" : "Missing"],
+          ]}
+        />
+      </section>
 
-            <MetricCard
-              label="F1 score"
-              value={formatPercent(metrics?.f1_score)}
-              description="Balance between precision and recall."
-              emphasis
-            />
+      <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">
+              PhysioNet subject search
+            </h2>
 
-            <MetricCard
-              label="Specificity"
-              value={formatPercent(metrics?.specificity)}
-              description="How well the model identifies left-hand imagery trials."
-            />
-
-            <MetricCard
-              label="Balanced accuracy"
-              value={formatPercent(metrics?.balanced_accuracy)}
-              description="Average of sensitivity and specificity."
-            />
-
-            <MetricCard
-              label="Total trials"
-              value={formatInteger(metrics?.num_trials)}
-              description="Number of trials used for evaluation."
-            />
-
-            <MetricCard
-              label="CSP components"
-              value={formatInteger(metrics?.num_csp_components)}
-              description="Number of CSP spatial filters used."
-            />
+            <p className="mt-1 text-sm text-slate-500">
+              Multiple PhysioNet EEGBCI subjects are compared to select the
+              best-performing subject for dashboard visualization.
+            </p>
           </div>
 
-          {confusionMatrixUrl ? (
-            <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <h3 className="text-lg font-semibold text-slate-900">
-                Confusion Matrix
-              </h3>
+          <StatusBadge active={status?.subject_search?.available ?? false} />
+        </div>
 
-              <p className="mt-1 text-sm text-slate-500">
-                Left-hand imagery and right-hand imagery
-                classification result.
-              </p>
-
-              <img
-                src={confusionMatrixUrl}
-                alt="Motor imagery confusion matrix"
-                className="mt-4 w-full rounded-xl border border-slate-100 bg-white"
-              />
-            </div>
-          ) : (
-            <div className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-              <h3 className="text-lg font-semibold text-amber-900">
-                Confusion matrix not found
-              </h3>
-
-              <p className="mt-1 text-sm leading-6 text-amber-800">
-                Run{" "}
-                <code className="rounded bg-white px-1 py-0.5">
-                  python -m scripts.train_motor_imagery_physionet_subject_search
-                </code>{" "}
-                to generate the motor imagery result files.
-              </p>
-            </div>
-          )}
-        </section>
-
-        <section className="mt-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <SectionHeader
-            label="Step 2"
-            title="CSP + LDA Pipeline"
-            description="CSP extracts spatial EEG patterns that separate left-hand and right-hand motor imagery. LDA then classifies those features."
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <MiniMetric
+            label="Best subject"
+            value={formatCount(bestSubject?.subject)}
           />
 
-          <div className="grid gap-3 md:grid-cols-7">
-            {(status?.pipeline ?? [
-              "EEG trials",
-              "Band-pass filtering",
-              "Epoch extraction",
-              "CSP spatial filtering",
-              "Log-variance features",
-              "Linear Discriminant Analysis",
-              "Left/right imagery prediction",
-            ]).map((step, index) => (
-              <div
-                key={step}
-                className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
-              >
-                <p className="text-xs font-medium uppercase tracking-wide text-blue-600">
-                  {`0${index + 1}`}
-                </p>
-
-                <p className="mt-2 text-sm font-semibold text-slate-900">
-                  {step}
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="mt-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <SectionHeader
-            label="Step 3"
-            title="Technical Details"
-            description="These values help debug and understand how the final metrics were calculated."
+          <MiniMetric
+            label="Best accuracy"
+            value={formatMetric(bestSubject?.accuracy)}
           />
 
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <MetricCard
-              label="True positive"
-              value={formatInteger(metrics?.true_positive)}
-              description="Right-hand imagery trials correctly classified."
-            />
-
-            <MetricCard
-              label="True negative"
-              value={formatInteger(metrics?.true_negative)}
-              description="Left-hand imagery trials correctly classified."
-            />
-
-            <MetricCard
-              label="False positive"
-              value={formatInteger(metrics?.false_positive)}
-              description="Left-hand imagery trials incorrectly classified as right-hand."
-            />
-
-            <MetricCard
-              label="False negative"
-              value={formatInteger(metrics?.false_negative)}
-              description="Right-hand imagery trials incorrectly classified as left-hand."
-            />
-
-            <MetricCard
-              label="Model"
-              value={metrics?.model ?? "CSP + LDA"}
-              description="Model architecture used for this baseline."
-            />
-
-            <MetricCard
-              label="Dataset"
-              value={metrics?.dataset ?? "N/A"}
-              description="Dataset used to generate the current result."
-            />
-
-            <MetricCard
-              label="Model file"
-              value={modelOutput?.exists ? "Saved" : "Missing"}
-              description="Whether the trained CSP + LDA model file exists."
-            />
-
-            <MetricCard
-              label="Predictions CSV"
-              value={
-                status?.outputs?.predictions_csv?.exists
-                  ? "Saved"
-                  : "Missing"
-              }
-              description="Trial-level prediction CSV output."
-            />
-          </div>
-        </section>
-
-        <section className="mt-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <SectionHeader
-            label="Step 4"
-            title="PhysioNet Subject Search"
-            description="Because real EEG motor imagery varies strongly across people, this section compares multiple PhysioNet subjects and selects the best-performing subject for dashboard visualization."
+          <MiniMetric
+            label="Best F1 score"
+            value={formatMetric(bestSubject?.f1_score)}
           />
 
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <MetricCard
-              label="Best subject"
-              value={formatInteger(bestSubject?.subject)}
-              description="PhysioNet subject with the best accuracy and F1 score among tested subjects."
-              emphasis
-            />
+          <MiniMetric
+            label="CV splits"
+            value={formatCount(bestSubject?.num_cv_splits)}
+          />
 
-            <MetricCard
-              label="Best accuracy"
-              value={formatPercent(bestSubject?.accuracy)}
-              description="Accuracy from cross-validation for the selected subject."
-              emphasis
-            />
+          <MiniMetric
+            label="Band-pass"
+            value={`${formatNumber(bestSubject?.low_freq, 0)}–${formatNumber(
+              bestSubject?.high_freq,
+              0,
+            )} Hz`}
+          />
 
-            <MetricCard
-              label="Best F1 score"
-              value={formatPercent(bestSubject?.f1_score)}
-              description="F1 score from cross-validation for the selected subject."
-            />
+          <MiniMetric
+            label="Epoch window"
+            value={`${formatNumber(bestSubject?.tmin, 1)}–${formatNumber(
+              bestSubject?.tmax,
+              1,
+            )} s`}
+          />
 
-            <MetricCard
-              label="CV splits"
-              value={formatInteger(bestSubject?.num_cv_splits)}
-              description="Number of cross-validation folds used in subject search."
-            />
+          <MiniMetric
+            label="Channels"
+            value={formatCount(bestSubject?.num_channels)}
+          />
 
-            <MetricCard
-              label="Band-pass"
-              value={`${formatNumber(bestSubject?.low_freq, 0)}–${formatNumber(
-                bestSubject?.high_freq,
-                0,
-              )} Hz`}
-              description="Frequency band used before CSP feature extraction."
-            />
+          <MiniMetric
+            label="Comparison CSV"
+            value={
+              status?.subject_search?.comparison_csv?.exists
+                ? "Saved"
+                : "Missing"
+            }
+          />
+        </div>
 
-            <MetricCard
-              label="Epoch window"
-              value={`${formatNumber(bestSubject?.tmin, 1)}–${formatNumber(
-                bestSubject?.tmax,
-                1,
-              )} s`}
-              description="Time window after cue used for motor imagery classification."
-            />
+        <div className="mt-5">
+          <ImagePanel
+            title="Subject accuracy comparison"
+            src={subjectComparisonChartUrl}
+            compact
+          />
+        </div>
+      </section>
 
-            <MetricCard
-              label="Channels"
-              value={formatInteger(bestSubject?.num_channels)}
-              description="Number of EEG channels used from PhysioNet EEGBCI."
-            />
+      <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-900">
+          CSP + LDA processing pipeline
+        </h2>
 
-            <MetricCard
-              label="Comparison CSV"
-              value={
-                status?.subject_search?.comparison_csv?.exists
-                  ? "Saved"
-                  : "Missing"
-              }
-              description="CSV file containing subject-level comparison results."
-            />
-          </div>
+        <p className="mt-1 text-sm text-slate-500">
+          The current pipeline follows a standard motor imagery BCI workflow.
+        </p>
 
-          {subjectComparisonChartUrl ? (
-            <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <h3 className="text-lg font-semibold text-slate-900">
-                Subject Accuracy Comparison
-              </h3>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Accuracy comparison across tested PhysioNet subjects.
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+          {(status?.pipeline ?? [
+            "EEG trials",
+            "Band-pass filtering",
+            "Epoch extraction",
+            "CSP spatial filtering",
+            "Log-variance features",
+            "Linear Discriminant Analysis",
+            "Left/right imagery prediction",
+          ]).map((step, index) => (
+            <div
+              key={step}
+              className="rounded-xl border border-slate-200 bg-white p-4"
+            >
+              <p className="text-xs font-semibold text-emerald-600">
+                {`0${index + 1}`}
               </p>
 
-              <img
-                src={subjectComparisonChartUrl}
-                alt="PhysioNet motor imagery subject comparison"
-                className="mt-4 w-full rounded-xl border border-slate-100 bg-white"
-              />
-            </div>
-          ) : (
-            <div className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-              <h3 className="text-lg font-semibold text-amber-900">
-                Subject comparison not found
-              </h3>
-
-              <p className="mt-1 text-sm leading-6 text-amber-800">
-                Run{" "}
-                <code className="rounded bg-white px-1 py-0.5">
-                  python -m scripts.train_motor_imagery_physionet_subject_search
-                </code>{" "}
-                to generate subject comparison outputs.
+              <p className="mt-2 text-sm font-semibold text-slate-800">
+                {step}
               </p>
             </div>
-          )}
-        </section>
-      </div>
-    </main>
+          ))}
+        </div>
+      </section>
+
+      <section className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+        This model is for research and educational use only and is not intended
+        for clinical diagnosis.
+      </section>
+    </AppShell>
   );
+}
+
+function ImagePanel({
+  title,
+  src,
+  compact = false,
+}: {
+  title: string;
+  src: string;
+  compact?: boolean;
+}) {
+  return (
+    <figure className="overflow-hidden rounded-xl border border-slate-200">
+      <div
+        className={[
+          "flex items-center justify-center bg-slate-950 p-3",
+          compact ? "h-72" : "h-96",
+        ].join(" ")}
+      >
+        <img
+          src={src}
+          alt={title}
+          className="max-h-full max-w-full object-contain"
+        />
+      </div>
+
+      <figcaption className="bg-white px-4 py-3 text-center text-sm font-medium text-slate-700">
+        {title}
+      </figcaption>
+    </figure>
+  );
+}
+
+function InfoPanel({
+  title,
+  values,
+}: {
+  title: string;
+  values: Array<[string, string]>;
+}) {
+  return (
+    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+
+      <dl className="mt-4 divide-y divide-slate-100">
+        {values.map(([label, value]) => (
+          <MetricRow
+            key={label}
+            label={label}
+            value={value}
+          />
+        ))}
+      </dl>
+    </article>
+  );
+}
+
+function MiniMetric({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <p className="text-xs text-slate-500">{label}</p>
+
+      <p className="mt-1 text-sm font-semibold text-slate-800">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function MetricRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-3">
+      <dt className="text-sm text-slate-500">{label}</dt>
+
+      <dd className="text-sm font-semibold text-slate-800">
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+function formatMetric(value?: number): string {
+  return value == null ? "N/A" : value.toFixed(4);
+}
+
+function formatNumber(value?: number, digits: number = 2): string {
+  return value == null ? "N/A" : value.toFixed(digits);
+}
+
+function formatCount(value?: number): string {
+  return value == null ? "N/A" : value.toLocaleString();
+}
+
+function formatHz(value?: number): string {
+  return value == null ? "N/A" : `${value.toFixed(1)} Hz`;
 }

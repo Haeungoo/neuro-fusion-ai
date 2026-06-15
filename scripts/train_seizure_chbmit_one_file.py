@@ -103,9 +103,9 @@ def main() -> None:
 
     print("Training Random Forest seizure classifier...")
     result = train_random_forest_seizure(
-        X_features=X_features,
+        X=X_features,
         y=y,
-        model_path="models/seizure_rf_chbmit_one_file.pkl",
+        file_names=["models/seizure_rf_chbmit_one_file.pkl"],
         test_size=0.25,
         random_state=42,
     )

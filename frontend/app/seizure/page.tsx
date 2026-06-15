@@ -2,7 +2,7 @@ import AppShell from "@/components/AppShell";
 import SeizureDashboard, {
   type SeizureStatus,
 } from "@/components/SeizureDashboard";
-import { apiFetch } from "@/lib/api";
+import { apiFetch } from "@/app/lib/api";
 
 export default async function SeizurePage() {
   const status = await apiFetch<SeizureStatus>("/api/seizure/status");
