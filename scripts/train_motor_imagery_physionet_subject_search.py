@@ -26,23 +26,9 @@ except ImportError:
     PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-RESULTS_DIR = (
-    PROJECT_ROOT
-    / "results"
-    / "motor_imagery"
-)
-
-MODELS_DIR = (
-    PROJECT_ROOT
-    / "models"
-)
-
-DATA_DIR = (
-    PROJECT_ROOT
-    / "data"
-    / "motor_imagery"
-    / "physionet"
-)
+RESULTS_DIR = PROJECT_ROOT / "results" / "motor_imagery"
+MODELS_DIR = PROJECT_ROOT / "models"
+DATA_DIR = PROJECT_ROOT / "data" / "motor_imagery" / "physionet"
 
 
 def load_physionet_subject(
@@ -52,7 +38,7 @@ def load_physionet_subject(
     high_freq: float,
     tmin: float,
     tmax: float,
-) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
+) -> tuple[np.ndarray, np.ndarray, dict[str, Any], mne.Info]:
     """
     Load one PhysioNet EEGBCI subject.
 
@@ -166,7 +152,7 @@ def load_physionet_subject(
         "label_1": "right_hand_imagery",
     }
 
-    return X, y, metadata
+    return X, y, metadata, epochs.info.copy()
 
 
 def build_pipeline(
@@ -209,7 +195,7 @@ def evaluate_subject(
     n_components: int,
     n_splits: int = 5,
 ) -> dict[str, Any]:
-    X, y, metadata = load_physionet_subject(
+    X, y, metadata, _info = load_physionet_subject(
         subject=subject,
         runs=runs,
         low_freq=low_freq,
@@ -251,6 +237,7 @@ def evaluate_subject(
             "high_freq": float(high_freq),
             "tmin": float(tmin),
             "tmax": float(tmax),
+            "num_trials": metadata["num_trials"],
             "num_csp_components": int(n_components),
             "num_channels": metadata["num_channels"],
             "num_samples_per_trial": metadata["num_samples_per_trial"],
@@ -450,6 +437,77 @@ def save_confusion_matrix_image(
     plt.close()
 
 
+def save_csp_topomap(
+    path: Path,
+    pipeline: Pipeline,
+    info: mne.Info,
+    max_patterns: int = 4,
+) -> None:
+    """
+    Save CSP spatial patterns as EEG topomaps.
+
+    The CSP patterns show spatial EEG weights that help separate
+    left-hand and right-hand motor imagery.
+    """
+
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    csp = pipeline.named_steps["csp"]
+
+    if not hasattr(csp, "patterns_"):
+        raise RuntimeError(
+            "CSP patterns are not available. Fit the pipeline first."
+        )
+
+    patterns = np.asarray(csp.patterns_)
+
+    n_patterns = min(
+        max_patterns,
+        patterns.shape[0],
+    )
+
+    fig, axes = plt.subplots(
+        1,
+        n_patterns,
+        figsize=(4 * n_patterns, 3.5),
+    )
+
+    if n_patterns == 1:
+        axes = [axes]
+
+    for index in range(n_patterns):
+        ax = axes[index]
+
+        mne.viz.plot_topomap(
+            patterns[index],
+            info,
+            axes=ax,
+            show=False,
+            contours=0,
+        )
+
+        ax.set_title(
+            f"CSP Pattern {index + 1}",
+            fontsize=11,
+        )
+
+    fig.suptitle(
+        "CSP Spatial Pattern Topomaps",
+        fontsize=14,
+        fontweight="bold",
+    )
+
+    plt.tight_layout()
+    plt.savefig(
+        path,
+        dpi=180,
+    )
+    plt.close(fig)
+
+
 def train_final_model_for_best_subject(
     best_subject: int,
     runs: list[int],
@@ -459,7 +517,7 @@ def train_final_model_for_best_subject(
     tmax: float,
     n_components: int,
 ) -> None:
-    X, y, metadata = load_physionet_subject(
+    X, y, metadata, info = load_physionet_subject(
         subject=best_subject,
         runs=runs,
         low_freq=low_freq,
@@ -497,6 +555,32 @@ def train_final_model_for_best_subject(
         MODELS_DIR / "motor_imagery_physionet_subject_search.joblib",
     )
 
+    try:
+        save_csp_topomap(
+            path=RESULTS_DIR / "motor_imagery_csp_topomap.png",
+            pipeline=pipeline,
+            info=info,
+            max_patterns=min(4, n_components),
+        )
+
+        save_csp_topomap(
+            path=RESULTS_DIR / "motor_imagery_physionet_subject_search_csp_topomap.png",
+            pipeline=pipeline,
+            info=info,
+            max_patterns=min(4, n_components),
+        )
+
+        print(
+            "[csp topomap]",
+            RESULTS_DIR / "motor_imagery_csp_topomap.png",
+        )
+
+    except Exception as error:
+        print(
+            "[warning] CSP topomap could not be saved:",
+            str(error),
+        )
+
 
 def write_dashboard_outputs(
     best_metrics: dict[str, Any],
@@ -516,10 +600,7 @@ def write_dashboard_outputs(
         subject=int(best_metrics["subject"]),
     )
 
-    predictions_path = (
-        RESULTS_DIR
-        / "motor_imagery_predictions.csv"
-    )
+    predictions_path = RESULTS_DIR / "motor_imagery_predictions.csv"
 
     predictions_path.parent.mkdir(
         parents=True,

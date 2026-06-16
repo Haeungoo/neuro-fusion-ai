@@ -7,7 +7,6 @@ import {
   Database,
   Gauge,
   GitCompare,
-  ScanLine,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -73,6 +72,7 @@ type MotorStatus = {
     metrics_json?: FileInfo;
     predictions_csv?: FileInfo;
     confusion_matrix?: FileInfo;
+    csp_topomap?: FileInfo;
     model?: FileInfo;
     model_file?: FileInfo;
   };
@@ -113,6 +113,16 @@ export default function MotorImageryDashboard() {
     }
 
     return mediaUrl("motor_imagery/motor_imagery_confusion_matrix.png");
+  }, [status]);
+
+  const cspTopomapUrl = useMemo(() => {
+    const url = status?.outputs?.csp_topomap?.url;
+
+    if (url) {
+      return mediaUrl(url);
+    }
+
+    return mediaUrl("motor_imagery/motor_imagery_csp_topomap.png");
   }, [status]);
 
   const subjectComparisonChartUrl = useMemo(() => {
@@ -223,6 +233,46 @@ export default function MotorImageryDashboard() {
         </div>
       </section>
 
+      <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">
+              CSP Spatial Pattern Topomap
+            </h2>
+
+            <p className="mt-1 text-sm text-slate-500">
+              CSP topomap shows spatial EEG patterns used to separate
+              left-hand and right-hand motor imagery.
+            </p>
+          </div>
+
+          <StatusBadge active={status?.outputs?.csp_topomap?.exists ?? false} />
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <ImagePanel
+            title="CSP spatial pattern topomap"
+            src={cspTopomapUrl}
+            compact
+          />
+
+          <InfoPanel
+            title="Topomap interpretation"
+            values={[
+              ["Method", "Common Spatial Patterns"],
+              ["Purpose", "Separate left/right imagery"],
+              ["Input", "Band-passed EEG epochs"],
+              ["Feature", "Log-variance of CSP components"],
+              ["Classifier", metrics?.model ?? "CSP + LDA"],
+              [
+                "Topomap file",
+                status?.outputs?.csp_topomap?.exists ? "Saved" : "Missing",
+              ],
+            ]}
+          />
+        </div>
+      </section>
+
       <section className="mt-5 grid gap-5 lg:grid-cols-2">
         <InfoPanel
           title="Model details"
@@ -243,7 +293,10 @@ export default function MotorImageryDashboard() {
             ["True negative", formatCount(metrics?.true_negative)],
             ["False positive", formatCount(metrics?.false_positive)],
             ["False negative", formatCount(metrics?.false_negative)],
-            ["Predictions CSV", status?.outputs?.predictions_csv?.exists ? "Saved" : "Missing"],
+            [
+              "Predictions CSV",
+              status?.outputs?.predictions_csv?.exists ? "Saved" : "Missing",
+            ],
             ["Model file", modelFile?.exists ? "Saved" : "Missing"],
           ]}
         />
@@ -413,11 +466,7 @@ function InfoPanel({
 
       <dl className="mt-4 divide-y divide-slate-100">
         {values.map(([label, value]) => (
-          <MetricRow
-            key={label}
-            label={label}
-            value={value}
-          />
+          <MetricRow key={label} label={label} value={value} />
         ))}
       </dl>
     </article>
