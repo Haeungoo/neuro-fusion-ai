@@ -14,39 +14,23 @@ router = APIRouter(
 )
 
 
-RESULTS_DIR = (
-    PROJECT_ROOT
-    / "results"
-    / "motor_imagery"
-)
-
-MODELS_DIR = (
-    PROJECT_ROOT
-    / "models"
-)
+RESULTS_DIR = PROJECT_ROOT / "results" / "motor_imagery"
+MODELS_DIR = PROJECT_ROOT / "models"
 
 
-def read_json(
-    path: Path,
-) -> dict[str, Any] | None:
+def read_json(path: Path) -> dict[str, Any] | None:
     if not path.exists():
         return None
 
     try:
-        with open(
-            path,
-            "r",
-            encoding="utf-8",
-        ) as file:
+        with open(path, "r", encoding="utf-8") as file:
             return json.load(file)
 
     except json.JSONDecodeError:
         return None
 
 
-def file_info(
-    path: Path,
-) -> dict[str, Any]:
+def file_info(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {
             "exists": False,
@@ -55,9 +39,7 @@ def file_info(
         }
 
     try:
-        relative_path = path.relative_to(
-            PROJECT_ROOT / "results"
-        )
+        relative_path = path.relative_to(PROJECT_ROOT / "results")
 
         return {
             "exists": True,
@@ -75,48 +57,25 @@ def file_info(
 
 @router.get("/status")
 def motor_status() -> dict[str, Any]:
-    metrics_path = (
-        RESULTS_DIR
-        / "motor_imagery_metrics.json"
-    )
+    metrics_path = RESULTS_DIR / "motor_imagery_metrics.json"
+    predictions_path = RESULTS_DIR / "motor_imagery_predictions.csv"
+    confusion_matrix_path = RESULTS_DIR / "motor_imagery_confusion_matrix.png"
+    csp_topomap_path = RESULTS_DIR / "motor_imagery_csp_topomap.png"
 
-    predictions_path = (
-        RESULTS_DIR
-        / "motor_imagery_predictions.csv"
-    )
-
-    confusion_matrix_path = (
-        RESULTS_DIR
-        / "motor_imagery_confusion_matrix.png"
-    )
-
-    model_path = (
-        MODELS_DIR
-        / "motor_imagery_csp_lda.joblib"
-    )
+    model_path = MODELS_DIR / "motor_imagery_csp_lda.joblib"
 
     subject_comparison_csv_path = (
-        RESULTS_DIR
-        / "physionet_subject_comparison.csv"
+        RESULTS_DIR / "physionet_subject_comparison.csv"
     )
-
     subject_comparison_best_path = (
-        RESULTS_DIR
-        / "physionet_subject_comparison_best.json"
+        RESULTS_DIR / "physionet_subject_comparison_best.json"
     )
-
     subject_comparison_chart_path = (
-        RESULTS_DIR
-        / "physionet_subject_comparison_accuracy.png"
+        RESULTS_DIR / "physionet_subject_comparison_accuracy.png"
     )
 
-    metrics = read_json(
-        metrics_path
-    )
-
-    best_subject = read_json(
-        subject_comparison_best_path
-    )
+    metrics = read_json(metrics_path)
+    best_subject = read_json(subject_comparison_best_path)
 
     is_ready = (
         metrics_path.exists()
@@ -157,30 +116,17 @@ def motor_status() -> dict[str, Any]:
         ],
         "metrics": metrics,
         "outputs": {
-            "metrics_json": file_info(
-                metrics_path
-            ),
-            "predictions_csv": file_info(
-                predictions_path
-            ),
-            "confusion_matrix": file_info(
-                confusion_matrix_path
-            ),
-            "model": file_info(
-                model_path
-            ),
-            "model_file": file_info(
-                model_path
-            ),
+            "metrics_json": file_info(metrics_path),
+            "predictions_csv": file_info(predictions_path),
+            "confusion_matrix": file_info(confusion_matrix_path),
+            "csp_topomap": file_info(csp_topomap_path),
+            "model": file_info(model_path),
+            "model_file": file_info(model_path),
         },
         "subject_search": {
             "available": has_subject_search,
             "best_subject": best_subject,
-            "comparison_csv": file_info(
-                subject_comparison_csv_path
-            ),
-            "comparison_chart": file_info(
-                subject_comparison_chart_path
-            ),
+            "comparison_csv": file_info(subject_comparison_csv_path),
+            "comparison_chart": file_info(subject_comparison_chart_path),
         },
     }
