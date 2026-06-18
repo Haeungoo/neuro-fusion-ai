@@ -1,542 +1,513 @@
-"use client";
+import {
+  Activity,
+  BarChart3,
+  BrainCircuit,
+  Database,
+  Gauge,
+  LineChart,
+  ScanLine,
+} from "lucide-react";
 
-import { useEffect, useMemo, useState } from "react";
+import AppShell from "@/components/AppShell";
+import StatCard from "@/components/StatCard";
+import StatusBadge from "@/components/StatusBadge";
 import { apiFetch, mediaUrl } from "@/app/lib/api";
 
-type ModeKey =
-  | "synthetic"
-  | "chbmit_one_file"
-  | "chbmit_multi_file";
-
 type FileInfo = {
-  exists: boolean;
   path?: string;
-  url: string | null;
+  exists: boolean;
+  url?: string | null;
 };
 
-type SeizureEvaluationMetrics = {
-  classification?: {
-    true_positive?: number;
-    true_negative?: number;
-    false_positive?: number;
-    false_negative?: number;
-    sensitivity?: number;
-    recall?: number;
-    specificity?: number;
-    precision?: number;
-    negative_predictive_value?: number;
-    f1_score?: number;
-    accuracy?: number;
-    balanced_accuracy?: number;
-    prevalence?: number;
-    false_positive_rate?: number;
-    false_negative_rate?: number;
-    num_samples?: number;
-    num_positive_samples?: number;
-    num_negative_samples?: number;
-  };
-  false_alarm_analysis?: {
-    false_positive_windows?: number;
-    false_alarm_events?: number;
-    non_seizure_windows?: number;
-    non_seizure_duration_seconds?: number;
-    non_seizure_duration_hours?: number;
-    false_alarms_per_hour?: number;
-    merge_consecutive_windows?: boolean;
-    step_seconds?: number;
-  };
+type SeizureMetrics = {
+  accuracy?: number;
+  precision?: number;
+  recall?: number;
+  sensitivity?: number;
+  specificity?: number;
+  f1_score?: number;
+  balanced_accuracy?: number;
+
+  true_positive?: number;
+  true_negative?: number;
+  false_positive?: number;
+  false_negative?: number;
+
+  num_samples?: number;
+  num_windows?: number;
+  num_files?: number;
+
+  model?: string;
+  dataset?: string;
 };
 
-type SeizureStatusResponse = {
+type VisualizationMetadata = {
+  source?: string;
+  edf_path?: string;
+  duration_seconds?: number;
+  sampling_frequency?: number;
+  channels?: string[];
+  num_channels?: number;
+  num_samples?: number;
+  probability_threshold?: number;
+  score_type?: string;
+  note?: string;
+};
+
+type SeizureStatus = {
   module?: string;
   status?: string;
   description?: string;
-  available_modes?: string[];
-  results?: {
-    synthetic?: {
-      waveform?: FileInfo;
-      probability_timeline?: FileInfo;
-      confusion_matrix?: FileInfo;
-    };
-    chbmit_one_file?: {
-      waveform?: FileInfo;
-      probability_timeline?: FileInfo;
-      confusion_matrix?: FileInfo;
-    };
-    chbmit_multi_file?: {
-      waveform?: FileInfo;
-      probability_timeline?: FileInfo;
-      confusion_matrix?: FileInfo;
-    };
-  };
-  training_outputs?: {
-    feature_dataset?: FileInfo;
-    prediction_csv?: FileInfo;
-    random_forest_metrics?: Record<string, unknown> | null;
-    random_forest_confusion_matrix?: FileInfo;
-  };
-  evaluation_metrics?: SeizureEvaluationMetrics | null;
-  evaluation_outputs?: {
-    per_file_metrics_csv?: FileInfo;
+  dataset_note?: string;
+  labels?: Record<string, string>;
+  pipeline?: string[];
+
+  metrics?: SeizureMetrics | null;
+  multi_file_metrics?: SeizureMetrics | null;
+
+  visualization_metadata?: VisualizationMetadata | null;
+
+  outputs?: {
+    metrics_json?: FileInfo;
+    predictions_csv?: FileInfo;
     confusion_matrix?: FileInfo;
+    multi_file_metrics_json?: FileInfo;
+    multi_file_confusion_matrix?: FileInfo;
+    waveform?: FileInfo;
+    probability_timeline?: FileInfo;
+    visualization_metadata?: FileInfo;
+    model?: FileInfo;
+    model_file?: FileInfo;
   };
+
+  visualization?: {
+    available?: boolean;
+    waveform?: FileInfo;
+    probability_timeline?: FileInfo;
+    metadata?: VisualizationMetadata | null;
+  };
+
+  disclaimer?: string;
 };
 
-const MODE_LABELS: Record<ModeKey, string> = {
-  synthetic: "Synthetic demo",
-  chbmit_one_file: "CHB-MIT one file",
-  chbmit_multi_file: "CHB-MIT multi-file",
-};
+export default async function SeizureDashboard() {
+  const status = await apiFetch<SeizureStatus>("/api/seizure/status");
 
-const MODE_DESCRIPTIONS: Record<ModeKey, string> = {
-  synthetic:
-    "A simple artificial EEG example used only for visual demonstration.",
-  chbmit_one_file:
-    "A single CHB-MIT EEG file result. Useful for understanding one recording.",
-  chbmit_multi_file:
-    "A multi-file CHB-MIT result. Useful for a broader demo visualization.",
-};
+  const metrics =
+    status?.multi_file_metrics ??
+    status?.metrics ??
+    null;
 
-const RESULT_FILENAMES: Record<
-  ModeKey,
-  {
-    waveform: string;
-    timeline: string;
-    confusionMatrix: string;
-  }
-> = {
-  synthetic: {
-    waveform: "seizure/synthetic_waveform.png",
-    timeline: "seizure/synthetic_probability_timeline.png",
-    confusionMatrix: "seizure/synthetic_confusion_matrix.png",
-  },
-  chbmit_one_file: {
-    waveform: "seizure/chbmit_chb01_03_waveform.png",
-    timeline: "seizure/chbmit_chb01_03_probability_timeline.png",
-    confusionMatrix: "seizure/chbmit_chb01_03_confusion_matrix.png",
-  },
-  chbmit_multi_file: {
-    waveform: "seizure/chbmit_multi_file_waveform.png",
-    timeline: "seizure/chbmit_multi_file_probability_timeline.png",
-    confusionMatrix: "seizure/chbmit_multi_file_confusion_matrix.png",
-  },
-};
+  const modelFile =
+    status?.outputs?.model_file ??
+    status?.outputs?.model;
 
-function formatPercent(value?: number): string {
-  if (value === undefined || value === null) {
-    return "N/A";
-  }
+  const confusionMatrixUrl =
+    status?.outputs?.multi_file_confusion_matrix?.url
+      ? mediaUrl(status.outputs.multi_file_confusion_matrix.url)
+      : status?.outputs?.confusion_matrix?.url
+        ? mediaUrl(status.outputs.confusion_matrix.url)
+        : mediaUrl("seizure/seizure_confusion_matrix.png");
 
-  return `${(value * 100).toFixed(1)}%`;
+  const waveformUrl =
+    status?.outputs?.waveform?.url
+      ? mediaUrl(status.outputs.waveform.url)
+      : mediaUrl("seizure/seizure_eeg_waveform.png");
+
+  const probabilityTimelineUrl =
+    status?.outputs?.probability_timeline?.url
+      ? mediaUrl(status.outputs.probability_timeline.url)
+      : mediaUrl("seizure/seizure_probability_timeline.png");
+
+  const visualizationMetadata =
+    status?.visualization_metadata ??
+    status?.visualization?.metadata ??
+    null;
+
+  const visualizationAvailable =
+    status?.visualization?.available ??
+    Boolean(
+      status?.outputs?.waveform?.exists &&
+        status?.outputs?.probability_timeline?.exists,
+    );
+
+  return (
+    <AppShell
+      activePath="/seizure"
+      title="EEG Seizure Detection"
+      subtitle="CHB-MIT EEG analysis using Random Forest classification"
+    >
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+        <StatCard
+          icon={Gauge}
+          label="Accuracy"
+          value={formatMetric(metrics?.accuracy)}
+          description="Overall classification"
+          iconClassName="bg-blue-50 text-blue-600"
+        />
+
+        <StatCard
+          icon={BarChart3}
+          label="F1 Score"
+          value={formatMetric(metrics?.f1_score)}
+          description="Seizure detection balance"
+          iconClassName="bg-teal-50 text-teal-600"
+        />
+
+        <StatCard
+          icon={Activity}
+          label="Sensitivity"
+          value={formatMetric(metrics?.sensitivity ?? metrics?.recall)}
+          description="Seizure recall"
+          iconClassName="bg-rose-50 text-rose-600"
+        />
+
+        <StatCard
+          icon={ScanLine}
+          label="Specificity"
+          value={formatMetric(metrics?.specificity)}
+          description="Non-seizure detection"
+          iconClassName="bg-emerald-50 text-emerald-600"
+        />
+
+        <StatCard
+          icon={Database}
+          label="Files"
+          value={formatCount(metrics?.num_files)}
+          description="Evaluated EEG files"
+          iconClassName="bg-cyan-50 text-cyan-600"
+        />
+
+        <StatCard
+          icon={BrainCircuit}
+          label="Status"
+          value={status?.status ?? "N/A"}
+          description="Backend output check"
+          iconClassName="bg-amber-50 text-amber-600"
+        />
+      </section>
+
+      <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">
+              Seizure classification summary
+            </h2>
+
+            <p className="mt-1 text-sm text-slate-500">
+              Random Forest classification results for seizure and non-seizure
+              EEG segments.
+            </p>
+          </div>
+
+          <StatusBadge active={modelFile?.exists ?? false} />
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <ImagePanel
+            title="Confusion matrix"
+            src={confusionMatrixUrl}
+            compact
+          />
+
+          <InfoPanel
+            title="Evaluation metrics"
+            values={[
+              ["Accuracy", formatMetric(metrics?.accuracy)],
+              ["Precision", formatMetric(metrics?.precision)],
+              [
+                "Recall / Sensitivity",
+                formatMetric(metrics?.recall ?? metrics?.sensitivity),
+              ],
+              ["Specificity", formatMetric(metrics?.specificity)],
+              ["F1 score", formatMetric(metrics?.f1_score)],
+              [
+                "Balanced accuracy",
+                formatMetric(metrics?.balanced_accuracy),
+              ],
+            ]}
+          />
+        </div>
+      </section>
+
+      <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">
+              EEG Waveform and Seizure Probability Timeline
+            </h2>
+
+            <p className="mt-1 text-sm text-slate-500">
+              The waveform shows a short EEG preview, while the probability
+              timeline highlights seizure-like high-risk regions over time.
+            </p>
+          </div>
+
+          <StatusBadge active={visualizationAvailable} />
+        </div>
+
+        <div className="mt-5 grid gap-4">
+          <ImagePanel
+            title="EEG waveform preview"
+            src={waveformUrl}
+          />
+
+          <ImagePanel
+            title="Seizure probability timeline"
+            src={probabilityTimelineUrl}
+            compact
+          />
+        </div>
+      </section>
+
+      <section className="mt-5 grid gap-5 lg:grid-cols-2">
+        <InfoPanel
+          title="Visualization details"
+          values={[
+            ["Source", visualizationMetadata?.source ?? "N/A"],
+            [
+              "Duration",
+              formatSeconds(visualizationMetadata?.duration_seconds),
+            ],
+            [
+              "Sampling frequency",
+              formatHz(visualizationMetadata?.sampling_frequency),
+            ],
+            [
+              "Channels",
+              formatCount(visualizationMetadata?.num_channels),
+            ],
+            [
+              "Threshold",
+              formatMetric(visualizationMetadata?.probability_threshold),
+            ],
+            [
+              "Score type",
+              visualizationMetadata?.score_type ?? "N/A",
+            ],
+          ]}
+        />
+
+        <InfoPanel
+          title="Classification counts"
+          values={[
+            ["True positive", formatCount(metrics?.true_positive)],
+            ["True negative", formatCount(metrics?.true_negative)],
+            ["False positive", formatCount(metrics?.false_positive)],
+            ["False negative", formatCount(metrics?.false_negative)],
+            [
+              "Predictions CSV",
+              status?.outputs?.predictions_csv?.exists
+                ? "Saved"
+                : "Missing",
+            ],
+            [
+              "Model file",
+              modelFile?.exists ? "Saved" : "Missing",
+            ],
+          ]}
+        />
+      </section>
+
+      <section className="mt-5 grid gap-5 lg:grid-cols-2">
+        <InfoPanel
+          title="Model details"
+          values={[
+            ["Model", metrics?.model ?? "Random Forest"],
+            ["Dataset", metrics?.dataset ?? "CHB-MIT"],
+            ["Number of files", formatCount(metrics?.num_files)],
+            ["Number of windows", formatCount(metrics?.num_windows)],
+            ["Number of samples", formatCount(metrics?.num_samples)],
+            [
+              "Metrics JSON",
+              status?.outputs?.metrics_json?.exists ? "Saved" : "Missing",
+            ],
+          ]}
+        />
+
+        <InfoPanel
+          title="Output files"
+          values={[
+            [
+              "Confusion matrix",
+              status?.outputs?.confusion_matrix?.exists ||
+              status?.outputs?.multi_file_confusion_matrix?.exists
+                ? "Saved"
+                : "Missing",
+            ],
+            [
+              "Waveform image",
+              status?.outputs?.waveform?.exists ? "Saved" : "Missing",
+            ],
+            [
+              "Probability timeline",
+              status?.outputs?.probability_timeline?.exists
+                ? "Saved"
+                : "Missing",
+            ],
+            [
+              "Visualization metadata",
+              status?.outputs?.visualization_metadata?.exists
+                ? "Saved"
+                : "Missing",
+            ],
+            [
+              "Predictions CSV",
+              status?.outputs?.predictions_csv?.exists
+                ? "Saved"
+                : "Missing",
+            ],
+            [
+              "Model file",
+              modelFile?.exists ? "Saved" : "Missing",
+            ],
+          ]}
+        />
+      </section>
+
+      <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-900">
+          Seizure detection pipeline
+        </h2>
+
+        <p className="mt-1 text-sm text-slate-500">
+          The pipeline converts raw EEG recordings into window-level features
+          and model predictions.
+        </p>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          {(status?.pipeline ?? [
+            "EEG recording",
+            "Signal preprocessing",
+            "Window segmentation",
+            "Feature extraction",
+            "Random Forest classification",
+            "Seizure probability visualization",
+          ]).map((step, index) => (
+            <PipelineStep
+              key={step}
+              index={index}
+              label={step}
+            />
+          ))}
+        </div>
+      </section>
+
+      <section className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+        {status?.disclaimer ??
+          "This model is for research and educational use only and is not intended for clinical diagnosis."}
+      </section>
+    </AppShell>
+  );
 }
 
-function formatNumber(
-  value?: number,
-  digits: number = 2,
-): string {
-  if (value === undefined || value === null) {
-    return "N/A";
-  }
-
-  return value.toFixed(digits);
-}
-
-function backendMediaUrl(url?: string | null): string | null {
-  if (!url) {
-    return null;
-  }
-
-  if (url.startsWith("http://") || url.startsWith("https://")) {
-    return url;
-  }
-
-  return mediaUrl(url);
-}
-
-function MetricCard({
-  label,
-  value,
-  description,
-  emphasis = false,
+function ImagePanel({
+  title,
+  src,
+  compact = false,
 }: {
-  label: string;
-  value: string;
-  description: string;
-  emphasis?: boolean;
+  title: string;
+  src: string;
+  compact?: boolean;
 }) {
   return (
-    <div
-      className={[
-        "rounded-2xl border p-4 shadow-sm",
-        emphasis
-          ? "border-blue-200 bg-blue-50"
-          : "border-slate-200 bg-white",
-      ].join(" ")}
-    >
-      <p className="text-sm text-slate-500">{label}</p>
-
-      <p
+    <figure className="overflow-hidden rounded-xl border border-slate-200">
+      <div
         className={[
-          "mt-2 text-2xl font-semibold",
-          emphasis ? "text-blue-700" : "text-slate-900",
+          "flex items-center justify-center bg-slate-950 p-3",
+          compact ? "h-72" : "h-96",
         ].join(" ")}
       >
-        {value}
-      </p>
-
-      <p className="mt-2 text-xs leading-5 text-slate-500">
-        {description}
-      </p>
-    </div>
-  );
-}
-
-function ImageCard({
-  title,
-  description,
-  src,
-  alt,
-}: {
-  title: string;
-  description: string;
-  src: string;
-  alt: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="mb-3">
-        <h3 className="text-base font-semibold text-slate-900">
-          {title}
-        </h3>
-
-        <p className="mt-1 text-sm leading-5 text-slate-500">
-          {description}
-        </p>
+        <img
+          src={src}
+          alt={title}
+          className="max-h-full max-w-full object-contain"
+        />
       </div>
 
-      <img
-        src={src}
-        alt={alt}
-        className="w-full rounded-xl border border-slate-100"
-      />
-    </div>
+      <figcaption className="bg-white px-4 py-3 text-center text-sm font-medium text-slate-700">
+        {title}
+      </figcaption>
+    </figure>
   );
 }
 
-function SectionHeader({
-  label,
+function InfoPanel({
   title,
-  description,
+  values,
 }: {
-  label: string;
   title: string;
-  description: string;
+  values: Array<[string, string]>;
 }) {
   return (
-    <div className="mb-5">
-      <p className="text-sm font-medium uppercase tracking-wide text-blue-600">
-        {label}
-      </p>
-
-      <h2 className="mt-1 text-2xl font-semibold text-slate-950">
+    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h2 className="text-lg font-semibold text-slate-900">
         {title}
       </h2>
 
-      <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-        {description}
+      <dl className="mt-4 divide-y divide-slate-100">
+        {values.map(([label, value]) => (
+          <MetricRow
+            key={label}
+            label={label}
+            value={value}
+          />
+        ))}
+      </dl>
+    </article>
+  );
+}
+
+function MetricRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-3">
+      <dt className="text-sm text-slate-500">{label}</dt>
+
+      <dd className="text-right text-sm font-semibold text-slate-800">
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+function PipelineStep({
+  index,
+  label,
+}: {
+  index: number;
+  label: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <p className="text-xs font-semibold text-blue-600">
+        {`0${index + 1}`}
+      </p>
+
+      <p className="mt-2 text-sm font-semibold text-slate-800">
+        {label}
       </p>
     </div>
   );
 }
 
-export default function SeizureDashboard() {
-  const [selectedMode, setSelectedMode] =
-    useState<ModeKey>("chbmit_multi_file");
+function formatMetric(value?: number): string {
+  return value == null ? "N/A" : value.toFixed(4);
+}
 
-  const [status, setStatus] =
-    useState<SeizureStatusResponse | null>(null);
+function formatCount(value?: number): string {
+  return value == null ? "N/A" : value.toLocaleString();
+}
 
-  const [loading, setLoading] = useState(true);
+function formatHz(value?: number): string {
+  return value == null ? "N/A" : `${value.toFixed(1)} Hz`;
+}
 
-  useEffect(() => {
-    async function loadStatus() {
-      setLoading(true);
-
-      const data = await apiFetch<SeizureStatusResponse>(
-        "/api/seizure/status",
-      );
-
-      setStatus(data);
-      setLoading(false);
-    }
-
-    loadStatus();
-  }, []);
-
-  const selectedResult = RESULT_FILENAMES[selectedMode];
-
-  const evaluationMetrics = status?.evaluation_metrics;
-  const classification = evaluationMetrics?.classification;
-  const falseAlarm =
-    evaluationMetrics?.false_alarm_analysis;
-
-  const evaluationConfusionMatrixUrl = useMemo(() => {
-    return backendMediaUrl(
-      status?.evaluation_outputs?.confusion_matrix?.url,
-    );
-  }, [status]);
-
-  return (
-    <main className="min-h-screen bg-slate-50 px-6 py-8 text-slate-900">
-      <div className="mx-auto max-w-7xl">
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <p className="text-sm font-medium uppercase tracking-wide text-blue-600">
-                NeuroFusion-AI
-              </p>
-
-              <h1 className="mt-2 text-3xl font-bold text-slate-950">
-                EEG Seizure Detection
-              </h1>
-
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-                This page separates the final model evaluation
-                from the demo visualizations. The top section
-                shows the true model performance. The lower
-                section lets you explore example EEG outputs.
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-sm text-slate-500">
-                Backend status
-              </p>
-
-              <p className="mt-1 text-lg font-semibold text-slate-900">
-                {loading
-                  ? "Loading..."
-                  : status?.status ?? "Unavailable"}
-              </p>
-            </div>
-          </div>
-        </section>
-
-        <section className="mt-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <SectionHeader
-            label="Step 1"
-            title="Final Model Evaluation"
-            description="These numbers come from the final evaluation pipeline, using results/seizure/seizure_metrics.json. This is the most important section for judging model performance."
-          />
-
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <MetricCard
-              label="Sensitivity"
-              value={formatPercent(
-                classification?.sensitivity,
-              )}
-              description="How well the model detects true seizure windows. This is clinically important because missed seizures are dangerous."
-              emphasis
-            />
-
-            <MetricCard
-              label="Specificity"
-              value={formatPercent(
-                classification?.specificity,
-              )}
-              description="How well the model correctly identifies non-seizure windows."
-              emphasis
-            />
-
-            <MetricCard
-              label="Precision"
-              value={formatPercent(
-                classification?.precision,
-              )}
-              description="Among predicted seizure windows, how many were truly seizure."
-            />
-
-            <MetricCard
-              label="F1 score"
-              value={formatPercent(
-                classification?.f1_score,
-              )}
-              description="A balance between sensitivity and precision."
-            />
-
-            <MetricCard
-              label="Accuracy"
-              value={formatPercent(
-                classification?.accuracy,
-              )}
-              description="Overall proportion of correctly classified windows. In seizure data, this should not be interpreted alone."
-            />
-
-            <MetricCard
-              label="False alarms/hour"
-              value={formatNumber(
-                falseAlarm?.false_alarms_per_hour,
-                2,
-              )}
-              description="Estimated false seizure alarm events per non-seizure hour."
-              emphasis
-            />
-          </div>
-
-          {evaluationConfusionMatrixUrl && (
-            <div className="mt-8">
-              <ImageCard
-                title="Final Evaluation Confusion Matrix"
-                description="This confusion matrix belongs to the final evaluation result, not just one demo image mode."
-                src={evaluationConfusionMatrixUrl}
-                alt="Final seizure evaluation confusion matrix"
-              />
-            </div>
-          )}
-        </section>
-
-        <section className="mt-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <SectionHeader
-            label="Step 2"
-            title="Demo Result Viewer"
-            description="This section is for visual exploration only. Changing the mode below changes the example images, but it does not change the final evaluation metrics above."
-          />
-
-          <div className="grid gap-4 md:grid-cols-3">
-            {(
-              Object.keys(MODE_LABELS) as ModeKey[]
-            ).map((mode) => {
-              const isSelected = selectedMode === mode;
-
-              return (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => setSelectedMode(mode)}
-                  className={[
-                    "rounded-2xl border p-4 text-left shadow-sm transition",
-                    isSelected
-                      ? "border-blue-500 bg-blue-50"
-                      : "border-slate-200 bg-white hover:border-blue-300",
-                  ].join(" ")}
-                >
-                  <p className="text-base font-semibold text-slate-900">
-                    {MODE_LABELS[mode]}
-                  </p>
-
-                  <p className="mt-2 text-sm leading-5 text-slate-500">
-                    {MODE_DESCRIPTIONS[mode]}
-                  </p>
-
-                  {isSelected && (
-                    <p className="mt-3 text-xs font-medium text-blue-700">
-                      Selected demo mode
-                    </p>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="mt-8 grid gap-6 lg:grid-cols-2">
-            <ImageCard
-              title="EEG Waveform"
-              description="This shows a representative EEG signal segment for the selected demo mode."
-              src={mediaUrl(selectedResult.waveform)}
-              alt="EEG waveform"
-            />
-
-            <ImageCard
-              title="Seizure Probability Timeline"
-              description="This shows the predicted seizure probability across time windows for the selected demo mode."
-              src={mediaUrl(selectedResult.timeline)}
-              alt="Seizure probability timeline"
-            />
-
-            <ImageCard
-              title="Demo Confusion Matrix"
-              description="This confusion matrix belongs to the selected demo mode. It is separate from the final evaluation confusion matrix above."
-              src={mediaUrl(selectedResult.confusionMatrix)}
-              alt="Demo seizure confusion matrix"
-            />
-          </div>
-        </section>
-
-        <section className="mt-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <SectionHeader
-            label="Step 3"
-            title="Technical Details"
-            description="These values are useful for debugging and understanding how the final metrics were calculated."
-          />
-
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <MetricCard
-              label="True positive"
-              value={String(
-                classification?.true_positive ?? "N/A",
-              )}
-              description="Seizure windows correctly detected."
-            />
-
-            <MetricCard
-              label="True negative"
-              value={String(
-                classification?.true_negative ?? "N/A",
-              )}
-              description="Non-seizure windows correctly classified."
-            />
-
-            <MetricCard
-              label="False positive"
-              value={String(
-                classification?.false_positive ?? "N/A",
-              )}
-              description="Non-seizure windows incorrectly flagged as seizure."
-            />
-
-            <MetricCard
-              label="False negative"
-              value={String(
-                classification?.false_negative ?? "N/A",
-              )}
-              description="Seizure windows missed by the model."
-            />
-
-            <MetricCard
-              label="Total samples"
-              value={String(
-                classification?.num_samples ?? "N/A",
-              )}
-              description="Number of evaluated EEG windows."
-            />
-
-            <MetricCard
-              label="Seizure samples"
-              value={String(
-                classification?.num_positive_samples ?? "N/A",
-              )}
-              description="Number of true seizure windows."
-            />
-
-            <MetricCard
-              label="False alarm events"
-              value={String(
-                falseAlarm?.false_alarm_events ?? "N/A",
-              )}
-              description="Consecutive false-positive windows merged into alarm events."
-            />
-
-            <MetricCard
-              label="Step seconds"
-              value={formatNumber(
-                falseAlarm?.step_seconds,
-                1,
-              )}
-              description="Time interval between adjacent EEG windows."
-            />
-          </div>
-        </section>
-      </div>
-    </main>
-  );
+function formatSeconds(value?: number): string {
+  return value == null ? "N/A" : `${value.toFixed(1)} s`;
 }
