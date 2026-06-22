@@ -17,18 +17,24 @@ The overview page summarizes the current status and key metrics from all three A
 ### MRI Tumor Segmentation
 
 ![MRI Tumor Segmentation](screenshots/final/mri_page.png)
+![MRI Tumor Segmentation](screenshots/final/mri_page_2.png)
+![MRI Tumor Segmentation](screenshots/final/mri_page_3.png)
 
 The MRI page shows tumor segmentation results with input MRI, ground-truth mask, predicted mask, overlay, and best/worst validation case comparison.
 
 ### EEG Seizure Detection
 
 ![EEG Seizure Detection](screenshots/final/seizure_page.png)
+![EEG Seizure Detection](screenshots/final/seizure_page_2.png)
+![EEG Seizure Detection](screenshots/final/seizure_page_3.png)
 
 The seizure page shows EEG classification metrics, waveform visualization, probability timeline, and model output files.
 
 ### EEG Motor Imagery BCI
 
 ![EEG Motor Imagery BCI](screenshots/final/motor_page.png)
+![EEG Motor Imagery BCI](screenshots/final/motor_page_2.png)
+![EEG Motor Imagery BCI](screenshots/final/motor_page_3.png)
 
 The motor imagery page shows CSP + LDA classification results, subject comparison, and CSP spatial topomap visualization.
 
