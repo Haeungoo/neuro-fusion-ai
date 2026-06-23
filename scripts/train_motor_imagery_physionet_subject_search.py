@@ -226,6 +226,9 @@ def evaluate_subject(
         y,
         y_pred,
     )
+    
+    left_hand_count = int(np.sum(y == 0))
+    right_hand_count = int(np.sum(y == 1))
 
     metrics.update(
         {
@@ -243,6 +246,9 @@ def evaluate_subject(
             "num_samples_per_trial": metadata["num_samples_per_trial"],
             "sampling_frequency": metadata["sampling_frequency"],
             "num_cv_splits": int(n_splits),
+            # Used only for saving best-subject trial-level prediction CSV.
+            "_y_true": y.tolist(),
+            "_y_pred": y_pred.tolist(),
         }
     )
 
@@ -267,6 +273,8 @@ def save_subject_comparison_csv(
         "f1_score",
         "balanced_accuracy",
         "num_trials",
+        "left_hand_count",
+        "right_hand_count",
         "num_csp_components",
         "low_freq",
         "high_freq",
@@ -290,7 +298,7 @@ def save_subject_comparison_csv(
         for row in rows:
             writer.writerow(
                 {
-                    "subject": row.get("subject"),
+                   "subject": row.get("subject"),
                     "accuracy": row.get("accuracy"),
                     "precision": row.get("precision"),
                     "recall": row.get("recall"),
@@ -298,6 +306,8 @@ def save_subject_comparison_csv(
                     "f1_score": row.get("f1_score"),
                     "balanced_accuracy": row.get("balanced_accuracy"),
                     "num_trials": row.get("num_trials"),
+                    "left_hand_count": row.get("left_hand_count"),
+                    "right_hand_count": row.get("right_hand_count"),
                     "num_csp_components": row.get("num_csp_components"),
                     "low_freq": row.get("low_freq"),
                     "high_freq": row.get("high_freq"),
@@ -582,6 +592,14 @@ def train_final_model_for_best_subject(
         )
 
 
+def label_name(label: int) -> str:
+    if int(label) == 0:
+        return "left"
+    if int(label) == 1:
+        return "right"
+    return str(label)
+
+
 def write_dashboard_outputs(
     best_metrics: dict[str, Any],
 ) -> None:
@@ -589,9 +607,14 @@ def write_dashboard_outputs(
     Write generic output names used by the existing dashboard.
     """
 
+    # Save dashboard metrics without internal prediction arrays.
+    dashboard_metrics = dict(best_metrics)
+    y_true = dashboard_metrics.pop("_y_true", [])
+    y_pred = dashboard_metrics.pop("_y_pred", [])
+
     save_json(
         RESULTS_DIR / "motor_imagery_metrics.json",
-        best_metrics,
+        dashboard_metrics,
     )
 
     save_confusion_matrix_image(
@@ -616,26 +639,30 @@ def write_dashboard_outputs(
         writer = csv.DictWriter(
             file,
             fieldnames=[
-                "note",
+                "sample_index",
                 "subject",
-                "accuracy",
-                "f1_score",
+                "true_code",
+                "predicted_code",
+                "true_label",
+                "predicted_label",
+                "correct",
             ],
         )
 
         writer.writeheader()
 
-        writer.writerow(
-            {
-                "note": (
-                    "Subject search used cross_val_predict; "
-                    "trial-level probabilities are not saved in this version."
-                ),
-                "subject": best_metrics["subject"],
-                "accuracy": best_metrics["accuracy"],
-                "f1_score": best_metrics["f1_score"],
-            }
-        )
+        for index, (true_value, pred_value) in enumerate(zip(y_true, y_pred)):
+            writer.writerow(
+                {
+                    "sample_index": index,
+                    "subject": best_metrics["subject"],
+                    "true_code": int(true_value),
+                    "predicted_code": int(pred_value),
+                    "true_label": label_name(int(true_value)),
+                    "predicted_label": label_name(int(pred_value)),
+                    "correct": int(true_value) == int(pred_value),
+                }
+            )
 
 
 def main() -> None:
@@ -713,6 +740,7 @@ def main() -> None:
     )
 
     best_metrics = rows[0]
+    best_metrics["num_subjects"] = len(rows)
 
     save_subject_comparison_csv(
         RESULTS_DIR / "physionet_subject_comparison.csv",
