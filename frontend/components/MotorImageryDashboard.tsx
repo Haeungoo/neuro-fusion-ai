@@ -1,14 +1,13 @@
-"use client";
-
 import {
   Activity,
   BarChart3,
   BrainCircuit,
   Database,
+  FileText,
   Gauge,
-  GitCompare,
+  Network,
+  Waves,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
 
 import AppShell from "@/components/AppShell";
 import StatCard from "@/components/StatCard";
@@ -16,407 +15,257 @@ import StatusBadge from "@/components/StatusBadge";
 import { apiFetch, mediaUrl } from "@/app/lib/api";
 
 type FileInfo = {
-  path?: string;
-  exists: boolean;
+  path?: string | null;
+  exists?: boolean;
   url?: string | null;
 };
 
 type MotorMetrics = {
-  task?: string;
-  label_0?: string;
-  label_1?: string;
-  accuracy?: number;
-  precision?: number;
-  recall?: number;
-  sensitivity?: number;
-  specificity?: number;
-  f1_score?: number;
-  balanced_accuracy?: number;
-  true_positive?: number;
-  true_negative?: number;
-  false_positive?: number;
-  false_negative?: number;
-  confusion_matrix?: number[][];
-  num_trials?: number;
-  num_left_hand_trials?: number;
-  num_right_hand_trials?: number;
-  model?: string;
-  dataset?: string;
-  subject?: number;
-  runs?: number[];
-  low_freq?: number;
-  high_freq?: number;
-  tmin?: number;
-  tmax?: number;
-  num_csp_components?: number;
-  num_channels?: number;
-  num_samples_per_trial?: number;
-  sampling_frequency?: number;
-  num_train_trials?: number;
-  num_test_trials?: number;
-  num_cv_splits?: number;
+  accuracy?: number | null;
+  precision?: number | null;
+  recall?: number | null;
+  f1_score?: number | null;
+  best_subject?: number | string | null;
+  num_subjects?: number | string | unknown[] | null;
+  num_channels?: number | string | unknown[] | null;
+  num_csp_components?: number | string | unknown[] | null;
+  left_hand_count?: number | string | null;
+  right_hand_count?: number | string | null;
 };
 
 type MotorStatus = {
   module?: string;
   status?: string;
-  description?: string;
-  dataset_note?: string;
-  labels?: Record<string, string>;
-
-  pipeline?: string[];
-
   metrics?: MotorMetrics | null;
-
   outputs?: {
-    metrics_json?: FileInfo;
-    predictions_csv?: FileInfo;
     confusion_matrix?: FileInfo;
+    subject_comparison_plot?: FileInfo;
     csp_topomap?: FileInfo;
-    model?: FileInfo;
+    csp_3d_topomap?: FileInfo;
+    csp_3d_topomap_metadata?: FileInfo;
+    predictions_csv?: FileInfo;
+    metrics_json?: FileInfo;
+    subject_comparison_csv?: FileInfo;
+    subject_comparison_best_json?: FileInfo;
     model_file?: FileInfo;
-  };
-
-  subject_search?: {
-    available?: boolean;
-    best_subject?: MotorMetrics | null;
-    comparison_csv?: FileInfo;
-    comparison_chart?: FileInfo;
   };
 };
 
-export default function MotorImageryDashboard() {
-  const [status, setStatus] = useState<MotorStatus | null>(null);
-  const [loading, setLoading] = useState(true);
+export default async function MotorPage() {
+  const status = await safeApiFetch<MotorStatus>("/api/motor/status");
+  const metrics = status?.metrics ?? null;
+  const ready = status?.status === "ready";
 
-  useEffect(() => {
-    async function loadStatus() {
-      setLoading(true);
+  const primaryScore = metrics?.accuracy ?? metrics?.f1_score ?? null;
 
-      const data = await apiFetch<MotorStatus>("/api/motor/status");
+  const csp3dUrl =
+    status?.outputs?.csp_3d_topomap?.url
+      ? mediaUrl(status.outputs.csp_3d_topomap.url)
+      : mediaUrl("motor_imagery/motor_imagery_csp_3d_topomap.html");
 
-      setStatus(data);
-      setLoading(false);
-    }
-
-    loadStatus();
-  }, []);
-
-  const metrics = status?.metrics;
-  const bestSubject = status?.subject_search?.best_subject ?? null;
-
-  const confusionMatrixUrl = useMemo(() => {
-    const url = status?.outputs?.confusion_matrix?.url;
-
-    if (url) {
-      return mediaUrl(url);
-    }
-
-    return mediaUrl("motor_imagery/motor_imagery_confusion_matrix.png");
-  }, [status]);
-
-  const cspTopomapUrl = useMemo(() => {
-    const url = status?.outputs?.csp_topomap?.url;
-
-    if (url) {
-      return mediaUrl(url);
-    }
-
-    return mediaUrl("motor_imagery/motor_imagery_csp_topomap.png");
-  }, [status]);
-
-  const subjectComparisonChartUrl = useMemo(() => {
-    const url = status?.subject_search?.comparison_chart?.url;
-
-    if (url) {
-      return mediaUrl(url);
-    }
-
-    return mediaUrl(
-      "motor_imagery/physionet_subject_comparison_accuracy.png",
-    );
-  }, [status]);
-
-  const modelFile =
-    status?.outputs?.model_file ?? status?.outputs?.model;
+  const csp3dAvailable =
+    status?.outputs?.csp_3d_topomap?.exists ?? false;
 
   return (
     <AppShell
       activePath="/motor"
       title="EEG Motor Imagery BCI"
-      subtitle="PhysioNet EEGBCI analysis using CSP + LDA"
+      subtitle="CSP + LDA motor imagery classification dashboard with subject comparison, 2D CSP topomap, and interactive 3D CSP scalp visualization"
     >
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           icon={Gauge}
           label="Accuracy"
           value={formatMetric(metrics?.accuracy)}
-          description="Current selected subject"
-          iconClassName="bg-emerald-50 text-emerald-600"
-        />
-
-        <StatCard
-          icon={BarChart3}
-          label="F1 Score"
-          value={formatMetric(metrics?.f1_score)}
-          description="Classification balance"
-          iconClassName="bg-teal-50 text-teal-600"
-        />
-
-        <StatCard
-          icon={GitCompare}
-          label="Best subject"
-          value={formatCount(bestSubject?.subject)}
-          description="PhysioNet subject search"
+          description="Motor imagery classification accuracy"
           iconClassName="bg-blue-50 text-blue-600"
         />
 
         <StatCard
-          icon={Database}
-          label="Channels"
-          value={formatCount(metrics?.num_channels)}
-          description="EEG channels"
-          iconClassName="bg-cyan-50 text-cyan-600"
+          icon={Activity}
+          label="F1 Score"
+          value={formatMetric(metrics?.f1_score)}
+          description="Classification balance"
+          iconClassName="bg-purple-50 text-purple-600"
         />
 
         <StatCard
           icon={BrainCircuit}
-          label="CSP filters"
-          value={formatCount(metrics?.num_csp_components)}
-          description="Spatial components"
-          iconClassName="bg-violet-50 text-violet-600"
+          label="Best Subject"
+          value={formatSafeCount(metrics?.best_subject)}
+          description="Best PhysioNet subject"
+          iconClassName="bg-emerald-50 text-emerald-600"
         />
 
         <StatCard
-          icon={Activity}
-          label="Status"
-          value={loading ? "Loading" : status?.status ?? "N/A"}
-          description="Backend output check"
+          icon={Network}
+          label="CSP Components"
+          value={formatSafeCount(metrics?.num_csp_components)}
+          description="Spatial filtering components"
           iconClassName="bg-amber-50 text-amber-600"
         />
       </section>
 
       <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">
-              Motor imagery classification
+              Motor imagery outputs
             </h2>
 
-            <p className="mt-1 text-sm text-slate-500">
-              Left-hand versus right-hand EEG motor imagery classification
-              using CSP spatial filtering and Linear Discriminant Analysis.
+            <p className="mt-1 max-w-3xl text-sm text-slate-500">
+              This section shows classification performance, subject-level
+              accuracy comparison, and the standard 2D CSP spatial topomap.
             </p>
           </div>
 
-          <StatusBadge active={modelFile?.exists ?? false} />
+          <StatusBadge active={ready} />
         </div>
 
-        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+        <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
           <ImagePanel
-            title="Confusion matrix"
-            src={confusionMatrixUrl}
-            compact
+            title="Confusion Matrix"
+            description="Left-hand vs right-hand classification results"
+            src={mediaUrl("motor_imagery/motor_imagery_confusion_matrix.png")}
+            alt="Motor imagery confusion matrix"
           />
 
-          <InfoPanel
-            title="Evaluation metrics"
-            values={[
-              ["Accuracy", formatMetric(metrics?.accuracy)],
-              ["Precision", formatMetric(metrics?.precision)],
-              ["Recall", formatMetric(metrics?.recall)],
-              ["Specificity", formatMetric(metrics?.specificity)],
-              ["Balanced accuracy", formatMetric(metrics?.balanced_accuracy)],
-              ["Total trials", formatCount(metrics?.num_trials)],
-            ]}
+          <ImagePanel
+            title="Subject Comparison"
+            description="Accuracy comparison across PhysioNet subjects"
+            src={mediaUrl(
+              "motor_imagery/physionet_subject_comparison_accuracy.png",
+            )}
+            alt="PhysioNet subject comparison"
+          />
+
+          <ImagePanel
+            title="CSP Topomap 2D"
+            description="Standard 2D CSP spatial pattern"
+            src={mediaUrl("motor_imagery/motor_imagery_csp_topomap.png")}
+            alt="Motor imagery CSP 2D topomap"
           />
         </div>
       </section>
 
       <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">
-              CSP Spatial Pattern Topomap
+              CSP 3D Scalp Visualization
             </h2>
 
-            <p className="mt-1 text-sm text-slate-500">
-              CSP topomap shows spatial EEG patterns used to separate
-              left-hand and right-hand motor imagery.
+            <p className="mt-1 max-w-3xl text-sm text-slate-500">
+              Interactive 3D visualization of CSP spatial pattern weights mapped
+              onto approximate EEG electrode positions.
             </p>
           </div>
 
-          <StatusBadge active={status?.outputs?.csp_topomap?.exists ?? false} />
+          <StatusBadge active={csp3dAvailable} />
         </div>
 
-        <div className="mt-5 grid gap-4 lg:grid-cols-2">
-          <ImagePanel
-            title="CSP spatial pattern topomap"
-            src={cspTopomapUrl}
-            compact
-          />
-
-          <InfoPanel
-            title="Topomap interpretation"
-            values={[
-              ["Method", "Common Spatial Patterns"],
-              ["Purpose", "Separate left/right imagery"],
-              ["Input", "Band-passed EEG epochs"],
-              ["Feature", "Log-variance of CSP components"],
-              ["Classifier", metrics?.model ?? "CSP + LDA"],
-              [
-                "Topomap file",
-                status?.outputs?.csp_topomap?.exists ? "Saved" : "Missing",
-              ],
-            ]}
+        <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-slate-950">
+          <iframe
+            src={csp3dUrl}
+            title="Motor imagery CSP 3D scalp visualization"
+            className="h-[620px] w-full"
           />
         </div>
+
+        <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          This 3D CSP map is a model-derived spatial pattern, not a direct brain
+          activation map. Drag to rotate, scroll to zoom, and hover over
+          electrodes to inspect CSP weights.
+        </p>
       </section>
 
       <section className="mt-5 grid gap-5 lg:grid-cols-2">
         <InfoPanel
-          title="Model details"
+          title="Classification metrics"
+          icon={BarChart3}
           values={[
-            ["Model", metrics?.model ?? "CSP + LDA"],
-            ["Dataset", metrics?.dataset ?? "N/A"],
-            ["Subject", formatCount(metrics?.subject)],
-            ["Runs", metrics?.runs?.join(", ") ?? "N/A"],
-            ["CSP components", formatCount(metrics?.num_csp_components)],
-            ["Sampling frequency", formatHz(metrics?.sampling_frequency)],
+            ["Primary score", formatMetric(primaryScore)],
+            ["Accuracy", formatMetric(metrics?.accuracy)],
+            ["Precision", formatMetric(metrics?.precision)],
+            ["Recall", formatMetric(metrics?.recall)],
+            ["F1 score", formatMetric(metrics?.f1_score)],
+            ["Best subject", formatSafeCount(metrics?.best_subject)],
           ]}
         />
 
         <InfoPanel
-          title="Classification counts"
+          title="EEG dataset summary"
+          icon={Database}
           values={[
-            ["True positive", formatCount(metrics?.true_positive)],
-            ["True negative", formatCount(metrics?.true_negative)],
-            ["False positive", formatCount(metrics?.false_positive)],
-            ["False negative", formatCount(metrics?.false_negative)],
+            ["Number of subjects", formatSafeCount(metrics?.num_subjects)],
+            ["EEG channels", formatSafeCount(metrics?.num_channels)],
             [
-              "Predictions CSV",
-              status?.outputs?.predictions_csv?.exists ? "Saved" : "Missing",
+              "CSP components",
+              formatSafeCount(metrics?.num_csp_components),
             ],
-            ["Model file", modelFile?.exists ? "Saved" : "Missing"],
+            ["Left-hand samples", formatSafeCount(metrics?.left_hand_count)],
+            ["Right-hand samples", formatSafeCount(metrics?.right_hand_count)],
+          ]}
+        />
+
+        <InfoPanel
+          title="Output files"
+          icon={FileText}
+          values={[
+            [
+              "Confusion matrix",
+              fileStatus(status?.outputs?.confusion_matrix),
+            ],
+            [
+              "Subject comparison plot",
+              fileStatus(status?.outputs?.subject_comparison_plot),
+            ],
+            ["2D CSP topomap", fileStatus(status?.outputs?.csp_topomap)],
+            [
+              "3D CSP topomap",
+              fileStatus(status?.outputs?.csp_3d_topomap),
+            ],
+            [
+              "3D CSP metadata",
+              fileStatus(status?.outputs?.csp_3d_topomap_metadata),
+            ],
+            ["Predictions CSV", fileStatus(status?.outputs?.predictions_csv)],
+            ["Metrics JSON", fileStatus(status?.outputs?.metrics_json)],
+            ["Model file", fileStatus(status?.outputs?.model_file)],
+          ]}
+        />
+
+        <InfoPanel
+          title="Pipeline"
+          icon={Waves}
+          values={[
+            ["Step 1", "Load PhysioNet EEGBCI data"],
+            ["Step 2", "Filter EEG and extract epochs"],
+            ["Step 3", "Apply CSP spatial filtering"],
+            ["Step 4", "Classify with LDA"],
+            ["Step 5", "Generate 2D and 3D CSP visualizations"],
+          ]}
+        />
+
+        <InfoPanel
+          title="Model details"
+          icon={BrainCircuit}
+          values={[
+            ["Model", "CSP + LDA"],
+            ["Input", "Motor imagery EEG epochs"],
+            ["Task", "Left-hand vs right-hand imagery"],
+            ["2D visualization", "CSP topomap"],
+            ["3D visualization", "Interactive CSP scalp map"],
+            ["Module", status?.module ?? "EEG motor imagery BCI"],
+            ["Status", status?.status ?? "Unavailable"],
           ]}
         />
       </section>
 
-      <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">
-              PhysioNet subject search
-            </h2>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Multiple PhysioNet EEGBCI subjects are compared to select the
-              best-performing subject for dashboard visualization.
-            </p>
-          </div>
-
-          <StatusBadge active={status?.subject_search?.available ?? false} />
-        </div>
-
-        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <MiniMetric
-            label="Best subject"
-            value={formatCount(bestSubject?.subject)}
-          />
-
-          <MiniMetric
-            label="Best accuracy"
-            value={formatMetric(bestSubject?.accuracy)}
-          />
-
-          <MiniMetric
-            label="Best F1 score"
-            value={formatMetric(bestSubject?.f1_score)}
-          />
-
-          <MiniMetric
-            label="CV splits"
-            value={formatCount(bestSubject?.num_cv_splits)}
-          />
-
-          <MiniMetric
-            label="Band-pass"
-            value={`${formatNumber(bestSubject?.low_freq, 0)}–${formatNumber(
-              bestSubject?.high_freq,
-              0,
-            )} Hz`}
-          />
-
-          <MiniMetric
-            label="Epoch window"
-            value={`${formatNumber(bestSubject?.tmin, 1)}–${formatNumber(
-              bestSubject?.tmax,
-              1,
-            )} s`}
-          />
-
-          <MiniMetric
-            label="Channels"
-            value={formatCount(bestSubject?.num_channels)}
-          />
-
-          <MiniMetric
-            label="Comparison CSV"
-            value={
-              status?.subject_search?.comparison_csv?.exists
-                ? "Saved"
-                : "Missing"
-            }
-          />
-        </div>
-
-        <div className="mt-5">
-          <ImagePanel
-            title="Subject accuracy comparison"
-            src={subjectComparisonChartUrl}
-            compact
-          />
-        </div>
-      </section>
-
-      <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-900">
-          CSP + LDA processing pipeline
-        </h2>
-
-        <p className="mt-1 text-sm text-slate-500">
-          The current pipeline follows a standard motor imagery BCI workflow.
-        </p>
-
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
-          {(status?.pipeline ?? [
-            "EEG trials",
-            "Band-pass filtering",
-            "Epoch extraction",
-            "CSP spatial filtering",
-            "Log-variance features",
-            "Linear Discriminant Analysis",
-            "Left/right imagery prediction",
-          ]).map((step, index) => (
-            <div
-              key={step}
-              className="rounded-xl border border-slate-200 bg-white p-4"
-            >
-              <p className="text-xs font-semibold text-emerald-600">
-                {`0${index + 1}`}
-              </p>
-
-              <p className="mt-2 text-sm font-semibold text-slate-800">
-                {step}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
-
       <section className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-        This model is for research and educational use only and is not intended
-        for clinical diagnosis.
+        The CSP topomap is a model-derived spatial pattern, not a direct brain
+        activation map. This module is for research and portfolio demonstration
+        only.
       </section>
     </AppShell>
   );
@@ -424,45 +273,54 @@ export default function MotorImageryDashboard() {
 
 function ImagePanel({
   title,
+  description,
   src,
-  compact = false,
+  alt,
 }: {
   title: string;
+  description?: string;
   src: string;
-  compact?: boolean;
+  alt: string;
 }) {
   return (
-    <figure className="overflow-hidden rounded-xl border border-slate-200">
-      <div
-        className={[
-          "flex items-center justify-center bg-slate-950 p-3",
-          compact ? "h-72" : "h-96",
-        ].join(" ")}
-      >
+    <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-100 p-4">
+        <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
+
+        {description ? (
+          <p className="mt-1 text-xs text-slate-500">{description}</p>
+        ) : null}
+      </div>
+
+      <div className="flex h-96 items-center justify-center bg-slate-950 p-3">
         <img
           src={src}
-          alt={title}
+          alt={alt}
           className="max-h-full max-w-full object-contain"
         />
       </div>
-
-      <figcaption className="bg-white px-4 py-3 text-center text-sm font-medium text-slate-700">
-        {title}
-      </figcaption>
-    </figure>
+    </article>
   );
 }
 
 function InfoPanel({
   title,
+  icon: Icon,
   values,
 }: {
   title: string;
+  icon: React.ElementType;
   values: Array<[string, string]>;
 }) {
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+      <div className="flex items-center gap-3">
+        <div className="rounded-xl bg-blue-50 p-2 text-blue-600">
+          <Icon className="h-5 w-5" />
+        </div>
+
+        <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+      </div>
 
       <dl className="mt-4 divide-y divide-slate-100">
         {values.map(([label, value]) => (
@@ -470,24 +328,6 @@ function InfoPanel({
         ))}
       </dl>
     </article>
-  );
-}
-
-function MiniMetric({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <p className="text-xs text-slate-500">{label}</p>
-
-      <p className="mt-1 text-sm font-semibold text-slate-800">
-        {value}
-      </p>
-    </div>
   );
 }
 
@@ -502,25 +342,35 @@ function MetricRow({
     <div className="flex items-center justify-between gap-4 py-3">
       <dt className="text-sm text-slate-500">{label}</dt>
 
-      <dd className="text-sm font-semibold text-slate-800">
+      <dd className="text-right text-sm font-semibold text-slate-800">
         {value}
       </dd>
     </div>
   );
 }
 
-function formatMetric(value?: number): string {
+async function safeApiFetch<T>(path: string): Promise<T | null> {
+  try {
+    return await apiFetch<T>(path);
+  } catch {
+    return null;
+  }
+}
+
+function formatMetric(value?: number | null): string {
   return value == null ? "N/A" : value.toFixed(4);
 }
 
-function formatNumber(value?: number, digits: number = 2): string {
-  return value == null ? "N/A" : value.toFixed(digits);
+function formatSafeCount(
+  value?: number | string | unknown[] | null,
+): string {
+  if (value == null) return "N/A";
+  if (Array.isArray(value)) return value.length.toLocaleString();
+  if (typeof value === "number") return value.toLocaleString();
+  if (typeof value === "string") return value;
+  return "N/A";
 }
 
-function formatCount(value?: number): string {
-  return value == null ? "N/A" : value.toLocaleString();
-}
-
-function formatHz(value?: number): string {
-  return value == null ? "N/A" : `${value.toFixed(1)} Hz`;
+function fileStatus(file?: FileInfo): string {
+  return file?.exists ? "Available" : "Missing";
 }
