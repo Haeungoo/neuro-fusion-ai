@@ -20,7 +20,13 @@ The overview page summarizes the current status and key metrics from all three A
 ![MRI Tumor Segmentation](screenshots/final/mri_page_2.png)
 ![MRI Tumor Segmentation](screenshots/final/mri_page_3.png)
 
-The MRI page shows tumor segmentation results with input MRI, ground-truth mask, predicted mask, overlay, and best/worst validation case comparison.
+- FLAIR-based MRI tumor segmentation workflow
+- U-Net-style segmentation model
+- Predicted tumor mask visualization
+- Ground-truth mask comparison
+- Dice and IoU evaluation
+- Best and worst validation case review
+- Overlay visualization for easier interpretation
 
 ### EEG Seizure Detection
 
@@ -28,7 +34,12 @@ The MRI page shows tumor segmentation results with input MRI, ground-truth mask,
 ![EEG Seizure Detection](screenshots/final/seizure_page_2.png)
 ![EEG Seizure Detection](screenshots/final/seizure_page_3.png)
 
-The seizure page shows EEG classification metrics, waveform visualization, probability timeline, and model output files.
+- EEG signal classification workflow
+- Seizure vs non-seizure prediction
+- EEG waveform visualization
+- Probability timeline visualization
+- Confusion matrix and classification metrics
+- Prediction CSV output
 
 ### EEG Motor Imagery BCI
 
@@ -36,52 +47,58 @@ The seizure page shows EEG classification metrics, waveform visualization, proba
 ![EEG Motor Imagery BCI](screenshots/final/motor_page_2.png)
 ![EEG Motor Imagery BCI](screenshots/final/motor_page_3.png)
 
-The motor imagery page shows CSP + LDA classification results, subject comparison, and CSP spatial topomap visualization.
+- PhysioNet EEGBCI motor imagery workflow
+- Left-hand vs. right-hand imagery classification
+- EEG preprocessing and epoch extraction
+- CSP feature extraction
+- LDA classification
+- Stratified cross-validation
+- Subject comparison
+- CSP topomap visualization
 
 ---
 
-## Main Modules
+### Dataset & Training Pipeline
 
-### 1. MRI Tumor Segmentation
+#### 1. MRI Tumor Segmentation
 
-This module performs brain tumor segmentation using a U-Net-style model on MRI slices.
+The MRI module uses a FLAIR-based brain tumor segmentation workflow inspired by BraTS-style MRI data.
 
-Main features:
+- **Input data**: *FLAIR MRI slices*
+- **Task**: *Pixel-level tumor mask segmentation*
+- **Model**: *U-Net-style segmentation model*
+- **Training objective**: *Predict tumor segmentation masks from MRI slices*
+- **Output**: *Predicted tumor mask and overlay visualization*
+- **Evaluation**: *Dice score and Intersection over Union*
+- **Dashboard outputs**: *Input MRI, ground-truth mask, predicted mask, overlay image, and best/worst validation case review*
 
-* Input MRI, ground-truth mask, predicted mask, and overlay visualization
-* Dice and IoU evaluation metrics
-* Case-level and slice-level validation results
-* Best and worst validation case visualization
+The model predicts tumor regions from FLAIR MRI slices. The predicted mask is compared with the ground-truth segmentation mask using Dice and IoU to measure how well the predicted tumor region overlaps with the true tumor region.
 
----
+#### 2. EEG Seizure Detection
 
-### 2. EEG Seizure Detection
+The seizure detection module uses EEG time-series data to classify seizure-related patterns and visualize model outputs.
 
-This module classifies EEG signals for seizure detection.
+- **Input data**: *EEG signal windows*
+- **Task**: *Seizure vs. non-seizure classification*
+- **Model type**: *Feature-based machine learning classifier*
+- **Training approach**: *Extract EEG signal features from time-series windows and train a classifier to distinguish seizure-related and non-seizure patterns*
+- **Output**: *Prediction results, EEG waveform visualization, probability timeline, and confusion matrix*
+- **Evaluation**: *Accuracy, precision, recall, specificity, F1 score, and confusion matrix*
 
-Main features:
+This module focuses on transforming EEG time-series signals into interpretable classification outputs. The dashboard visualizes both the EEG waveform and the model’s seizure probability timeline to make the results easier to review.
 
-* EEG feature extraction
-* Random Forest-based seizure classification
-* Accuracy, sensitivity, specificity, and F1 score reporting
-* EEG waveform visualization
-* Seizure probability timeline
-* Prediction CSV output
+#### 3. EEG Motor Imagery BCI
 
----
+The motor imagery module uses PhysioNet EEGBCI data for left-hand vs. right-hand motor imagery classification.
 
-### 3. EEG Motor Imagery BCI
+- **Input data**: *EEG motor imagery trials from PhysioNet EEGBCI*
+- **Task**: *Left-hand vs. right-hand motor imagery classification*
+- **Pipeline**: *EEG preprocessing, epoch extraction, CSP feature extraction, and LDA classification*
+- **Model**: *Common Spatial Patterns + Linear Discriminant Analysis*
+- **Evaluation**: *Stratified cross-validation, accuracy, precision, recall, specificity, F1 score, and confusion matrix*
+- **Dashboard outputs**: *Subject comparison, confusion matrix, prediction CSV, and CSP topomap visualization*
 
-This module classifies left-hand versus right-hand motor imagery EEG signals.
-
-Main features:
-
-* PhysioNet EEGBCI data processing
-* CSP spatial filtering
-* LDA classification
-* Subject-level performance comparison
-* Confusion matrix
-* CSP spatial topomap visualization
+This module demonstrates a classical brain-computer interface workflow. CSP is used to extract spatial EEG patterns that help distinguish left-hand and right-hand motor imagery, and LDA is used as the final classifier.
 
 ---
 
@@ -97,6 +114,7 @@ Main features:
 * PyTorch
 * MNE
 * Matplotlib
+* Joblib
 
 ### Frontend
 
@@ -106,11 +124,13 @@ Main features:
 * Tailwind CSS
 * lucide-react
 
-### Machine Learning
+### Data / Output
 
-* U-Net-style MRI segmentation
-* Random Forest seizure detection
-* CSP + LDA motor imagery classification
+* JSON metrics
+* CSV prediction summaries
+* PNG visualizations
+* Saved model files
+* Local dashboard API outputs
 
 ---
 
@@ -131,6 +151,8 @@ neuro-fusion-ai/
 │   │   ├── mri/page.tsx
 │   │   ├── seizure/page.tsx
 │   │   └── motor/page.tsx
+│   │   └── lib/
+│   │       └── api.ts
 │   └── components/
 │
 ├── scripts/
@@ -151,42 +173,56 @@ neuro-fusion-ai/
 └── README.md
 ```
 
+Note: Large datasets, trained model checkpoints, and generated result files are not included in this repository.
+
 ---
 
 ## How to Run
 
-### 1. Start the backend
+### 1. Clone the repository
+``` 
+git clone https://github.com/YOUR_USERNAME/neuro-fusion-ai.git
+cd neuro-fusion-ai
+```
 
-```bash
+### 2. Create and activate a Python environment
+```
+python -m venv .venv
+source .venv/bin/activate
+```
+
+### 3. Install Python dependencies
+```
+pip install -r requirements.txt
+```
+
+### 4. Run the FastAPI backend
+```
 uvicorn backend.main:app --reload
 ```
 
-Backend:
-
-```text
+The backend will run at:
+```
 http://127.0.0.1:8000
 ```
 
 API documentation:
-
-```text
+```
 http://127.0.0.1:8000/docs
 ```
 
-### 2. Start the frontend
-
-```bash
+### 5. Run the Next.js frontend
+Open a second terminal:
+```
 cd frontend
 npm install
 npm run dev
 ```
 
-Frontend:
-
-```text
+The frontend will run at:
+```
 http://localhost:3000
 ```
-
 ---
 
 ## Dashboard Pages
@@ -242,28 +278,22 @@ python -m scripts.train_motor_imagery_physionet_subject_search
 
 ---
 
-## Current Highlights
+### What I Learned
 
-* Full-stack FastAPI + Next.js dashboard
-* Three neuroscience AI workflows in one interface
-* Live API-connected overview page
-* MRI best/worst validation case visualization
-* EEG seizure waveform and probability timeline
-* EEG motor imagery CSP topomap
-* Clean medical-style dashboard UI
-* Brain favicon and final screenshots for portfolio presentation
+Through this project, I practiced:
 
----
-
-## Future Improvements
-
-Planned improvements include:
-
-* True window-level seizure prediction CSV
-* Shared reusable dashboard components
-* Unified `/api/summary` endpoint
-* Automated backend and frontend tests
-* Short demo video or deployment guide
+- MRI modality interpretation
+- FLAIR-based segmentation workflow
+- U-Net-style medical image segmentation
+- Dice and IoU evaluation
+- EEG signal preprocessing
+- Seizure detection workflow
+- Motor imagery BCI pipeline
+- CSP and LDA classification
+- Cross-validation and confusion matrix analysis
+- FastAPI backend development
+- Next.js and TypeScript frontend development
+- Scientific visualization for model interpretation
 
 ---
 
