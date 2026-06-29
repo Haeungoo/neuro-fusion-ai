@@ -187,8 +187,8 @@ cd neuro-fusion-ai
 
 ### 2. Create and activate a Python environment
 ```
-python -m venv .venv
 source .venv/bin/activate
+python -m venv .venv
 ```
 
 ### 3. Install Python dependencies
